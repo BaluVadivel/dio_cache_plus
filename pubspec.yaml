@@ -9,14 +9,11 @@ documentation: https://github.com/BaluVadivel/dio_cache_plus#readme
 license: MIT
 
 topics:
-  - networking
-  - caching
   - dio
+  - caching
   - http
   - interceptor
-  - flutter
   - performance
-  - offline-first
 
 environment:
   sdk: ^3.7.2
