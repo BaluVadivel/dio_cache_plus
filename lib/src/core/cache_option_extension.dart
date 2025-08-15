@@ -26,16 +26,17 @@ extension CacheOptionsExtension on Options {
   /// ```dart
   /// // Force fresh data and cache for 2 hours
   /// Options()
-  ///   .setCaching(true,
+  ///   .setCaching(
+  ///     enableCache: true,
   ///     duration: Duration(hours: 2),
   ///     invalidateCacheKey: true
   ///   );
   ///
   /// // Disable caching unconditionally
-  /// Options().setCaching(false, overrideConditionalCache: true);
+  /// Options().setCaching(enableCache: false, overrideConditionalCache: true);
   /// ```
-  Options setCaching(
-    bool enableCache, {
+  Options setCaching({
+    bool? enableCache,
     Duration? duration,
     bool overrideConditionalCache = false,
     bool invalidateCache = false,

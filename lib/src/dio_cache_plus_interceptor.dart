@@ -50,14 +50,14 @@ import 'core/models/typedef.dart';
 ///
 /// // Force fresh data with custom cache duration
 /// dio.get('/data', options: Options().setCaching(
-///   true,
+///   enableCache: true,
 ///   duration: Duration(hours: 2),
 ///   invalidateCache: true,
 /// ));
 ///
 /// // Unconditionally disable caching
 /// dio.get('/data', options: Options().setCaching(
-///   false,
+///   enableCache: false,
 ///   overrideConditionalCache: true,
 /// ));
 /// ```
@@ -113,7 +113,7 @@ class DioCachePlusInterceptor extends Interceptor {
   /// final response = await dio.get(
   ///   '/api/data',
   ///   options: Options().setCaching(
-  ///     true,
+  ///     enableCache: true,
   ///     duration: Duration(hours: 2),
   ///   ),
   /// );
@@ -121,7 +121,7 @@ class DioCachePlusInterceptor extends Interceptor {
   /// // Disable caching for a specific request (even if cacheAll is true)
   /// final noCacheResponse = await dio.get(
   ///   '/api/data',
-  ///   options: Options().setCaching(false),
+  ///   options: Options().setCaching(enableCache: false),
   /// );
   /// ```
 

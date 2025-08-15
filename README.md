@@ -62,7 +62,7 @@ void main() async {
   // Use the setCaching extension to enable caching for this specific request.
   final response = await dio.get(
     '/api/users',
-    options: Options().setCaching(true),
+    options: Options().setCaching(enableCache: true),
   );
 
   // `response` is now cached for 5 minutes!
@@ -80,7 +80,7 @@ Override the global settings for any request with clean, type-safe extension met
 final longCacheResponse = await dio.get(
   '/api/big_data',
   options: Options().setCaching(
-    true,
+    enableCache: true,
     duration: const Duration(hours: 2),
   ),
 );
@@ -88,7 +88,7 @@ final longCacheResponse = await dio.get(
 // Disable caching for this request, even if global caching is enabled
 final noCacheResponse = await dio.get(
   '/api/realtime_updates',
-  options: Options().setCaching(false),
+  options: Options().setCaching(enableCache: false),
 );
 ```
 
@@ -122,7 +122,9 @@ Bypass the cache to get fresh data from the server. The new response will then b
 // This request will ignore any cached data and hit the network
 final freshResponse = await dio.get(
   '/api/users/123',
-  options: Options().setCaching(true, invalidateCache: true),
+  options: Options().setCaching(
+    enableCache: true,
+    invalidateCache: true),
 );
 ```
 
