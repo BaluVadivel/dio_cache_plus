@@ -19,6 +19,7 @@ import 'core/models/typedef.dart';
 /// - Conditional caching rules based on URL/query parameters
 /// - Cache invalidation and forced refreshes
 /// - Custom cache storage implementation (defaults to Hive)
+/// - Skipping cache for failed API responses (via [isErrorResponse] predicate)
 ///
 /// ## Cache Control Hierarchy (highest to lowest priority):
 /// 1. `invalidateCache: true` → Always fetches fresh data
@@ -43,8 +44,9 @@ import 'core/models/typedef.dart';
 /// final dio = Dio();
 /// dio.interceptors.add(
 ///   DioCachePlusInterceptor(
-///     const Duration(minutes: 5), // Global default duration
-///     false, // Cache only when explicitly enabled
+///     cacheAll: false, // Cache only when explicitly enabled
+///     commonCacheDuration: const Duration(minutes: 5), // Global default duration
+///     isErrorResponse: (response) => response.statusCode != 200, // Don't cache failed responses
 ///   ),
 /// );
 ///
@@ -64,6 +66,13 @@ import 'core/models/typedef.dart';
 class DioCachePlusInterceptor extends Interceptor {
   final Duration _cacheDuration;
   final bool _cacheAll;
+
+  /// A function to determine whether the response is a api failure or not. While will be use to skip the caching if it's failure.
+  /// ```dart
+  /// // Don't cache failed responses
+  /// isErrorResponse: (response) => response.statusCode != 200,
+  /// ```
+  final bool Function(Response response) _isErrorResponse;
   late final SanitizerCacheManager _cacheManager;
 
   final _incomingRequests = <String, List<Completer<Response>>>{};
@@ -75,25 +84,30 @@ class DioCachePlusInterceptor extends Interceptor {
   ///
   /// Uses the default [HiveCacheManager] for storage.
   ///
+  /// [_cacheAll] - Whether to cache all requests by default
   /// [_cacheDuration] - How long responses should be cached before expiring
+  /// [_isErrorResponse] - Predicate to determine if a response represents a failed API call
   DioCachePlusInterceptor._(
+    this._cacheAll,
     this._cacheDuration,
-    this._cacheAll, [
+    this._isErrorResponse, [
     SanitizerCacheManager? cacheManager,
   ]) {
     _cacheManager = cacheManager ?? HiveCacheManager();
   }
 
-  /// Creates a singleton instance of [DioCachePlusInterceptor] with the specified
-  /// global cache duration and caching behavior.
+  /// Creates a singleton instance of [DioCachePlusInterceptor] with named parameters.
   ///
   /// This interceptor enables automatic response caching and request deduplication
   /// for Dio HTTP requests.
   ///
-  /// - [commonCacheDuration]: The default duration for caching responses.
+  /// Parameters:
   /// - [cacheAll]: If `true`, all requests will be cached by default unless explicitly
   ///   disabled via [Options.extra]. If `false`, only requests explicitly marked
   ///   with `.setCaching(enableCache: true)` will be cached.
+  /// - [commonCacheDuration]: The default duration for caching responses.
+  /// - [isErrorResponse]: A predicate that determines if a response represents a failed
+  ///   API call (these responses won't be cached)
   ///
   /// You can override this default behavior per request using the `.setCaching()`
   /// extension method on `Options`, which allows enabling or disabling caching
@@ -104,8 +118,9 @@ class DioCachePlusInterceptor extends Interceptor {
   /// final dio = Dio();
   /// dio.interceptors.add(
   ///   DioCachePlusInterceptor(
-  ///     const Duration(minutes: 5), // default duration
-  ///     false, // cache only when explicitly enabled
+  ///     cacheAll: false, // cache only when explicitly enabled
+  ///     commonCacheDuration: const Duration(minutes: 5), // default duration
+  ///     isErrorResponse: (response) => response.statusCode != 200, // don't cache failures
   ///   ),
   /// );
   ///
@@ -124,9 +139,16 @@ class DioCachePlusInterceptor extends Interceptor {
   ///   options: Options().setCaching(enableCache: false),
   /// );
   /// ```
-
-  factory DioCachePlusInterceptor(Duration commonCacheDuration, bool cacheAll) {
-    _instance ??= DioCachePlusInterceptor._(commonCacheDuration, cacheAll);
+  factory DioCachePlusInterceptor({
+    required bool cacheAll,
+    required Duration commonCacheDuration,
+    required bool Function(Response response) isErrorResponse,
+  }) {
+    _instance ??= DioCachePlusInterceptor._(
+      cacheAll,
+      commonCacheDuration,
+      isErrorResponse,
+    );
     _instanceCompleter.complete();
     return _instance!;
   }
@@ -184,18 +206,21 @@ class DioCachePlusInterceptor extends Interceptor {
   void onResponse(Response response, ResponseInterceptorHandler handler) async {
     final key = response.requestOptions.generateRequestKey;
     final (isCaching, _) = _cachingEnabled(response.requestOptions);
-    if (isCaching) {
+
+    // Cache only successful responses (based on isErrorResponse check)
+    if (!_isErrorResponse(response) && isCaching) {
       try {
         await _cacheManager.setData(key, response);
       } catch (_) {}
-
-      final completers = _incomingRequests.remove(key);
-      completers?.forEach((completer) {
-        if (!completer.isCompleted) {
-          completer.complete(response);
-        }
-      });
     }
+
+    // Always notify all waiting requests, whether successful or failed
+    final completers = _incomingRequests.remove(key);
+    completers?.forEach((completer) {
+      if (!completer.isCompleted) {
+        completer.complete(response);
+      }
+    });
 
     handler.next(response);
   }
@@ -209,11 +234,11 @@ class DioCachePlusInterceptor extends Interceptor {
     final key = err.requestOptions.generateRequestKey;
 
     final completers = _incomingRequests.remove(key);
-    for (final completer in (completers ?? [])) {
+    completers?.forEach((completer) {
       if (!completer.isCompleted) {
         completer.completeError(err);
       }
-    }
+    });
 
     handler.next(err);
   }

@@ -172,7 +172,7 @@ The main interceptor class.
 
 | Constructor / Method                                                                              | Description                                                                                             |
 | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `DioCachePlusInterceptor(Duration commonCacheDuration, bool cacheAll)`                            | Creates the interceptor. `cacheAll: true` caches all GET requests; `false` requires opt-in.             |
+| `DioCachePlusInterceptor({required bool cacheAll, required Duration commonCacheDuration, required bool Function(Response) isErrorResponse})` | Creates the interceptor with named parameters. `cacheAll: true` caches all requests by default; `false` requires explicit opt-in via `setCaching()`. `commonCacheDuration` sets default cache duration. `isErrorResponse` predicate prevents caching of failed responses. |
 | `static void addConditionalCaching(String key, RequestMatcher condition, [Duration? duration])`   | Adds a global rule to cache requests that match the `condition`.                                        |
 | `static void removeConditionalCaching(String key)`                                                | Removes a conditional caching rule and its associated cached data.                                      |
 | `static Future<void> clearAll()`                                                                  | Clears all data from the cache.                                                                         |
