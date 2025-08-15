@@ -20,8 +20,7 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.6
-  # in our package we haven't used any breaking changes on dio from 4.0.0 to 5.8.0+1
-  dio: ">=4.0.0 <=5.8.0+1"
+  dio: ^5.8.0
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   crypto: ^3.0.6

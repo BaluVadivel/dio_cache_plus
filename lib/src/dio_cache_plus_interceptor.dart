@@ -173,9 +173,10 @@ class DioCachePlusInterceptor extends Interceptor {
       if (_incomingRequests.containsKey(key)) {
         final completer = Completer<Response>();
         _incomingRequests[key]!.add(completer);
-        completer.future.then((response) {
-          handler.resolve(response);
-        }, onError: (e) => handler.reject(e as DioError));
+        completer.future.then(
+          (response) => handler.resolve(response),
+          onError: (e) => handler.reject(e as DioException),
+        );
         return;
       }
 
@@ -230,7 +231,7 @@ class DioCachePlusInterceptor extends Interceptor {
   /// This method ensures that all duplicate requests receive the same error
   /// when a network request fails.
   @override
-  void onError(DioError err, ErrorInterceptorHandler handler) {
+  void onError(DioException err, ErrorInterceptorHandler handler) {
     final key = err.requestOptions.generateRequestKey;
 
     final completers = _incomingRequests.remove(key);
