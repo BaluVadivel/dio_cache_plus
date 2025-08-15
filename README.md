@@ -50,9 +50,9 @@ void main() async {
   // The `false` flag means you must opt-in to cache each request.
   dio.interceptors.add(
     DioCachePlusInterceptor(
-      const Duration(minutes: 5), // Default cache duration
-      false, // `false`: cache only when explicitly enabled per request
-             // `true`: cache all GET requests by default
+      cacheAll: false, // Cache only when explicitly enabled
+      commonCacheDuration: const Duration(minutes: 5), // Global default duration
+      isErrorResponse: (response) => response.statusCode != 200, // Don't cache failed responses
     ),
   );
 
