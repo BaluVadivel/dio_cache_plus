@@ -1,6 +1,6 @@
 name: dio_cache_plus
 description: "Enhanced Dio caching interceptor with per-request control, conditional caching, and expiration."
-version: 1.0.1
+version: 1.0.2
 homepage: https://github.com/BaluVadivel/dio_cache_plus
 repository: https://github.com/BaluVadivel/dio_cache_plus.git
 issue_tracker: https://github.com/BaluVadivel/dio_cache_plus/issues
