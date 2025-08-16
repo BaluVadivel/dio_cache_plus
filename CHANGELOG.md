@@ -1,6 +1,5 @@
-## 0.0.1
-
-* Initial release of Dio Cache Plus.
+## 1.0.1
+* Updated the documentations to match 1.0.0 release changes
 
 ## 1.0.0
 
@@ -28,3 +27,7 @@
   * Self-documenting API usage
   * Safer refactoring
   * Better IDE support
+
+## 0.0.1
+
+* Initial release of Dio Cache Plus.
