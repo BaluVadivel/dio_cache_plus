@@ -2,8 +2,7 @@ import 'package:hive/hive.dart';
 
 class DurationAdapter extends TypeAdapter<Duration> {
   @override
-  final typeId =
-      1; // keep this consistent with whatever you've already registered
+  final typeId = 1; // keep this consistent with whatever you've already registered
 
   // Unit tags
   static const int _days = 0;

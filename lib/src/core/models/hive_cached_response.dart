@@ -49,27 +49,29 @@ class HiveCachedResponse extends HiveObject {
     required this.key,
     required Response response,
     Duration? validityDuration,
-  })  : statusCode = response.statusCode ?? 200,
-        data = jsonEncode(response.data),
-        headersJson = jsonEncode(response.headers.map),
-        timestamp = DateTime.now(),
-        requestUrl = response.requestOptions.uri.toString().split("?").first,
-        queryParameters = response.requestOptions.queryParameters,
-        validity = validityDuration;
+  }) : statusCode = response.statusCode ?? 200,
+       data = jsonEncode(response.data),
+       headersJson = jsonEncode(response.headers.map),
+       timestamp = DateTime.now(),
+       requestUrl = response.requestOptions.uri.toString().split("?").first,
+       queryParameters = response.requestOptions.queryParameters,
+       validity = validityDuration;
 
   Response toResponse(RequestOptions requestOptions) {
     return Response(
-        requestOptions: requestOptions,
-        statusCode: statusCode,
-        data: jsonDecode(data),
-        headers: Headers.fromMap(
-          (jsonDecode(headersJson) as Map<String, dynamic>)
-              .map((k, v) => MapEntry(k, List<String>.from(v))),
+      requestOptions: requestOptions,
+      statusCode: statusCode,
+      data: jsonDecode(data),
+      headers: Headers.fromMap(
+        (jsonDecode(headersJson) as Map<String, dynamic>).map(
+          (k, v) => MapEntry(k, List<String>.from(v)),
         ),
-        extra: {
-          SanitizerConstants.cacheTimeStampKey: timestamp.toIso8601String(),
-          if (validity != null)
-            SanitizerConstants.cacheValidityDurationKey: validity,
-        });
+      ),
+      extra: {
+        SanitizerConstants.cacheTimeStampKey: timestamp.toIso8601String(),
+        if (validity != null)
+          SanitizerConstants.cacheValidityDurationKey: validity,
+      },
+    );
   }
 }
