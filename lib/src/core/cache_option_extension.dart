@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'constants/sanitizer_constants.dart';
 
+/// Extension on [RequestOptions] to easily apply caching options.
 extension CacheOptionsExtension on Options {
   /// Configures caching behavior for individual Dio requests with fine-grained control.
   ///
