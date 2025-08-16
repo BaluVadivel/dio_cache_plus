@@ -1,3 +1,6 @@
+## 1.0.2
+* Added Example code.
+
 ## 1.0.1
 * Updated the documentations to match 1.0.0 release changes
 
