@@ -1,3 +1,5 @@
+// lib/src/core/models/hive_cached_response.dart
+
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -34,6 +36,9 @@ class HiveCachedResponse extends HiveObject {
   @HiveField(7)
   Map<String, dynamic> queryParameters;
 
+  @HiveField(8)
+  String method;
+
   HiveCachedResponse({
     required this.key,
     required this.statusCode,
@@ -43,6 +48,7 @@ class HiveCachedResponse extends HiveObject {
     required this.validity,
     required this.requestUrl,
     required this.queryParameters,
+    required this.method,
   });
 
   HiveCachedResponse.fromResponse({
@@ -55,7 +61,8 @@ class HiveCachedResponse extends HiveObject {
        timestamp = DateTime.now(),
        requestUrl = response.requestOptions.uri.toString().split("?").first,
        queryParameters = response.requestOptions.queryParameters,
-       validity = validityDuration;
+       validity = validityDuration,
+       method = response.requestOptions.method;
 
   Response toResponse(RequestOptions requestOptions) {
     return Response(

@@ -24,14 +24,15 @@ class HiveCachedResponseAdapter extends TypeAdapter<HiveCachedResponse> {
       timestamp: fields[4] as DateTime,
       validity: fields[5] as Duration?,
       requestUrl: fields[6] as String,
-      queryParameters: fields[7] as Map<String, dynamic>,
+      queryParameters: (fields[7] as Map).cast<String, dynamic>(),
+      method: fields[8] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveCachedResponse obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.key)
       ..writeByte(1)
@@ -47,7 +48,9 @@ class HiveCachedResponseAdapter extends TypeAdapter<HiveCachedResponse> {
       ..writeByte(6)
       ..write(obj.requestUrl)
       ..writeByte(7)
-      ..write(obj.queryParameters);
+      ..write(obj.queryParameters)
+      ..writeByte(8)
+      ..write(obj.method);
   }
 
   @override

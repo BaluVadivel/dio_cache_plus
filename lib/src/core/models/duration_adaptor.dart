@@ -1,3 +1,5 @@
+// lib/src/core/models/duration_adaptor.dart
+
 import 'package:hive/hive.dart';
 
 class DurationAdapter extends TypeAdapter<Duration> {

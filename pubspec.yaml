@@ -1,6 +1,6 @@
 name: dio_cache_plus
 description: "Enhanced Dio caching interceptor with per-request control, conditional caching, and expiration."
-version: 1.0.2
+version: 2.0.0
 homepage: https://github.com/BaluVadivel/dio_cache_plus
 repository: https://github.com/BaluVadivel/dio_cache_plus.git
 issue_tracker: https://github.com/BaluVadivel/dio_cache_plus/issues
@@ -23,7 +23,8 @@ dependencies:
   flutter:
     sdk: flutter
 
-  dio: ^5.8.0
+  # This package supports Dio versions from 4.x up to 5.9.0
+  dio: ">=4.0.0 <6.0.0"
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   crypto: ^3.0.6

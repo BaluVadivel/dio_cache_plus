@@ -1,36 +1,62 @@
-## 1.0.2
-* Added Example code.
+# Changelog
 
-## 1.0.1
-* Updated the documentations to match 1.0.0 release changes
+All notable changes to Dio Cache Plus will be documented in this file.
 
-## 1.0.0
+## [2.0.0] - 2024-08-16
 
-### Breaking Changes
-* Changed constructor parameters from positional to named arguments in `DioCachePlusInterceptor`:
-  * Added required `isErrorResponse` function parameter to verify and skip caching of failed responses
-  * Changed `cacheAll` to named parameter
-  * Changed `commonCacheDuration` to named parameter
-* Changed `enableCache` from positional to named optional argument in the `setCaching` method
-* Updated Dio dependency support to `^5.8.0` while maintaining 4.x compatibility
+### 🚀 Major Enhancements
+- **Dynamic function support** for duration and expiry calculations
+  - `durationFn` parameter for dynamic duration calculation at cache time
+  - `expiryFn` parameter for dynamic expiry calculation at cache time
+- **Factory constructors** for `ConditionalCacheRule` for better type safety
+- **Enhanced CacheOptionsExtension** with type-safe methods
+- **RequestDetails class** for better type safety in condition matching
 
-### Major Features
-* **`isErrorResponse` Predicate** - Core functionality that enables intelligent caching by:
-  * Preventing storage of failed API responses
-  * Allowing custom failure detection logic (e.g., status codes, error payloads)
-  * Essential for maintaining cache integrity
-* Improved API with named parameters for better readability and explicit configuration
+### ⚠️ Breaking Changes
+- **`RequestMatcher` signature** now uses `RequestDetails` object instead of separate parameters
+  - Old: `(String requestUrl, Map<String, dynamic> queryParameters) => ...`
+  - New: `(RequestDetails request) => request.url.contains(...)`
+- **Conditional caching API** now requires `ConditionalCacheRule` objects
+  - Old: `addConditionalCaching(key, condition, duration)`
+  - New: `addConditionalCaching(key, ConditionalCacheRule.duration(...))`
+- **Per-request caching methods** are now type-specific
+  - Old: `setCaching(enableCache: true, duration: ...)`
+  - New: `setCachingWithDuration(enableCache: true, duration: ...)`
 
-### Why These Changes?
-* The `isErrorResponse` parameter is now mandatory as it's critical for:
-  * Preventing cache pollution with error states
-  * Ensuring only valid responses are stored
-  * Supporting custom API failure detection
-* Named parameters provide:
-  * Self-documenting API usage
-  * Safer refactoring
-  * Better IDE support
+**For detailed migration instructions, see [Migration Guide](MIGRATION.md#migrating-from-1x-to-200)**
 
-## 0.0.1
+### 🔧 Improvements
+- **Enhanced cache expiry calculation** to happen at storage time for precise timing
+- **Improved caching logic precedence** with more intuitive rule evaluation
+- **Better error handling** throughout the interceptor
 
-* Initial release of Dio Cache Plus.
+## [1.0.2] - 2024-08-16
+
+### Fixed
+- **Cache invalidation** issues with force refresh
+- **Request deduplication** edge cases
+- **Hive storage** initialization race conditions
+
+## [1.0.1] - 2024-08-15
+
+### Fixed
+- **Package publishing** issues
+- **Documentation** formatting and examples
+
+## [1.0.0] - 2024-08-15
+
+### Added
+- **Initial stable release** with all core features
+- **Conditional caching** rules system
+- **Request deduplication** for identical concurrent requests
+- **Hive-based persistent storage**
+- **Per-request cache control** via Options extension
+- **Force refresh** capability
+
+## [0.0.1] - 2024-08-14
+
+### Added
+- **Initial development release**
+- **Basic caching interceptor** functionality
+- **Foundation for conditional caching**
+

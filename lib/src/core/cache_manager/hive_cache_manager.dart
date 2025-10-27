@@ -1,3 +1,5 @@
+// lib/src/core/cache_manager/hive_cache_manager.dart
+
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -27,9 +29,23 @@ class HiveCacheManager implements SanitizerCacheManager {
       Hive
         ..registerAdapter(HiveCachedResponseAdapter())
         ..registerAdapter(DurationAdapter());
-      _box = await Hive.openBox<HiveCachedResponse>(
-        SanitizerConstants.hiveBoxName,
-      );
+
+      const currentVersion = 2; // ← increment when schema changes
+      const boxName = '${SanitizerConstants.hiveBoxName}_v$currentVersion';
+
+      // Delete all old boxes before opening the new one
+      try {
+        if (await Hive.boxExists(SanitizerConstants.hiveBoxName)) {
+          await Hive.deleteBoxFromDisk(SanitizerConstants.hiveBoxName);
+        }
+        for (int i = 1; i < currentVersion; i++) {
+          final oldBoxName = '${SanitizerConstants.hiveBoxName}_v$i';
+          if (await Hive.boxExists(oldBoxName)) {
+            await Hive.deleteBoxFromDisk(oldBoxName);
+          }
+        }
+      } catch (_) {}
+      _box = await Hive.openBox<HiveCachedResponse>(boxName);
       _isInitialized = true;
     }
   }
@@ -77,7 +93,11 @@ class HiveCacheManager implements SanitizerCacheManager {
       await _initHive();
     }
     final selectedKeys = _box.values
-        .where((a) => condition(a.requestUrl, a.queryParameters))
+        .where(
+          (a) => condition(
+            RequestDetails(a.method, a.requestUrl, a.queryParameters),
+          ),
+        )
         .map((e) => e.key);
     _keyManager._removeKeys(selectedKeys.toSet());
     for (final key in selectedKeys) {

@@ -1,92 +1,66 @@
+// lib/src/dio_cache_plus_interceptor.dart
+
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:dio_cache_plus/src/core/models/typedef.dart';
 import 'package:dio_cache_plus/src/core/request_key_generator_extension.dart';
 
 import 'core/cache_manager/cache_manager.dart';
 import 'core/cache_manager/hive_cache_manager.dart';
 import 'core/constants/sanitizer_constants.dart';
-import 'core/models/typedef.dart';
+import 'core/models/conditional_cache_rule.dart';
 
 /// A Dio interceptor that provides HTTP response caching and request deduplication.
 ///
-/// This interceptor caches HTTP responses automatically to improve network efficiency
-/// and prevents duplicate simultaneous requests to the same endpoint.
-///
-/// It supports:
-/// - Global or per-request cache duration configuration
-/// - Enabling/disabling caching globally or per-request via [setCaching] extension
-/// - Conditional caching rules based on URL/query parameters
-/// - Cache invalidation and forced refreshes
-/// - Custom cache storage implementation (defaults to Hive)
-/// - Skipping cache for failed API responses (via [isErrorResponse] predicate)
-///
-/// ## Cache Control Hierarchy (highest to lowest priority):
-/// 1. `invalidateCache: true` → Always fetches fresh data
-/// 2. `enableCache: false` → Disables caching (unless overridden)
-/// 3. Request-specific conditional caching rules
-/// 4. Global `cacheAll` setting
-///
-/// ## Conditional Caching
-///
-/// Add dynamic caching rules that evaluate URLs and query parameters:
-/// ```dart
-/// DioCachePlusInterceptor.addConditionalCaching(
-///   'userCache',
-///   (url, query) => url.contains('/users') && query['active'] == true,
-///   duration: Duration(hours: 1),
-/// );
-/// ```
-///
-/// ## Usage Examples
-///
-/// ```dart
-/// final dio = Dio();
-/// dio.interceptors.add(
-///   DioCachePlusInterceptor(
-///     cacheAll: false, // Cache only when explicitly enabled
-///     commonCacheDuration: const Duration(minutes: 5), // Global default duration
-///     isErrorResponse: (response) => response.statusCode != 200, // Don't cache failed responses
-///   ),
-/// );
-///
-/// // Force fresh data with custom cache duration
-/// dio.get('/data', options: Options().setCaching(
-///   enableCache: true,
-///   duration: Duration(hours: 2),
-///   invalidateCache: true,
-/// ));
-///
-/// // Unconditionally disable caching
-/// dio.get('/data', options: Options().setCaching(
-///   enableCache: false,
-///   overrideConditionalCache: true,
-/// ));
-/// ```
+/// See README for usage.
 class DioCachePlusInterceptor extends Interceptor {
   final Duration _cacheDuration;
   final bool _cacheAll;
 
-  /// A function to determine whether the response is a api failure or not. While will be use to skip the caching if it's failure.
-  /// ```dart
-  /// // Don't cache failed responses
-  /// isErrorResponse: (response) => response.statusCode != 200,
-  /// ```
+  /// function to determine whether the response represents an error (if true, skip caching)
   final bool Function(Response response) _isErrorResponse;
   late final SanitizerCacheManager _cacheManager;
 
   final _incomingRequests = <String, List<Completer<Response>>>{};
+
+  // Backing conditional rules:
+  // key -> (RequestMatcher, ConditionalCacheRule)
+  final Map<String, ConditionalCacheRule> _conditionalCaching = {};
 
   static DioCachePlusInterceptor? _instance;
   static final Completer<void> _instanceCompleter = Completer();
 
   /// Creates a DioCachePlusInterceptor with the specified cache duration.
   ///
-  /// Uses the default [HiveCacheManager] for storage.
+  /// Use [conditionalRules] to supply constructor-level caching rules.
   ///
-  /// [_cacheAll] - Whether to cache all requests by default
-  /// [_cacheDuration] - How long responses should be cached before expiring
-  /// [_isErrorResponse] - Predicate to determine if a response represents a failed API call
+  /// Note: keeping signature backward compatible. Pass `conditionalRules` to
+  /// define rules permanently when creating interceptor.
+  factory DioCachePlusInterceptor({
+    required bool cacheAll,
+    required Duration commonCacheDuration,
+    required bool Function(Response response) isErrorResponse,
+    List<ConditionalCacheRule>? conditionalRules,
+  }) {
+    _instance ??= DioCachePlusInterceptor._(
+      cacheAll,
+      commonCacheDuration,
+      isErrorResponse,
+    );
+
+    // populate any constructor-provided conditional rules into the internal map
+    if (conditionalRules != null) {
+      for (var i = 0; i < conditionalRules.length; i++) {
+        final rule = conditionalRules[i];
+        _instance!._conditionalCaching['ctor_rule_$i'] ??= rule;
+      }
+    }
+
+    _instanceCompleter.complete();
+    return _instance!;
+  }
+
   DioCachePlusInterceptor._(
     this._cacheAll,
     this._cacheDuration,
@@ -94,63 +68,6 @@ class DioCachePlusInterceptor extends Interceptor {
     SanitizerCacheManager? cacheManager,
   ]) {
     _cacheManager = cacheManager ?? HiveCacheManager();
-  }
-
-  /// Creates a singleton instance of [DioCachePlusInterceptor] with named parameters.
-  ///
-  /// This interceptor enables automatic response caching and request deduplication
-  /// for Dio HTTP requests.
-  ///
-  /// Parameters:
-  /// - [cacheAll]: If `true`, all requests will be cached by default unless explicitly
-  ///   disabled via [Options.extra]. If `false`, only requests explicitly marked
-  ///   with `.setCaching(enableCache: true)` will be cached.
-  /// - [commonCacheDuration]: The default duration for caching responses.
-  /// - [isErrorResponse]: A predicate that determines if a response represents a failed
-  ///   API call (these responses won't be cached)
-  ///
-  /// You can override this default behavior per request using the `.setCaching()`
-  /// extension method on `Options`, which allows enabling or disabling caching
-  /// and setting a custom cache duration for individual requests.
-  ///
-  /// Example usage:
-  /// ```dart
-  /// final dio = Dio();
-  /// dio.interceptors.add(
-  ///   DioCachePlusInterceptor(
-  ///     cacheAll: false, // cache only when explicitly enabled
-  ///     commonCacheDuration: const Duration(minutes: 5), // default duration
-  ///     isErrorResponse: (response) => response.statusCode != 200, // don't cache failures
-  ///   ),
-  /// );
-  ///
-  /// // Enable caching for a specific request with custom duration
-  /// final response = await dio.get(
-  ///   '/api/data',
-  ///   options: Options().setCaching(
-  ///     enableCache: true,
-  ///     duration: Duration(hours: 2),
-  ///   ),
-  /// );
-  ///
-  /// // Disable caching for a specific request (even if cacheAll is true)
-  /// final noCacheResponse = await dio.get(
-  ///   '/api/data',
-  ///   options: Options().setCaching(enableCache: false),
-  /// );
-  /// ```
-  factory DioCachePlusInterceptor({
-    required bool cacheAll,
-    required Duration commonCacheDuration,
-    required bool Function(Response response) isErrorResponse,
-  }) {
-    _instance ??= DioCachePlusInterceptor._(
-      cacheAll,
-      commonCacheDuration,
-      isErrorResponse,
-    );
-    _instanceCompleter.complete();
-    return _instance!;
   }
 
   /// Handles incoming requests by checking cache and deduplicating requests.
@@ -168,41 +85,44 @@ class DioCachePlusInterceptor extends Interceptor {
     final key = options.generateRequestKey;
     _checkForceRefresh(options, key);
     final (isCaching, conditionalKey) = _cachingEnabled(options);
+
     if (isCaching) {
-      // Check for duplicate requests first (deduplication)
-      if (_incomingRequests.containsKey(key)) {
-        final completer = Completer<Response>();
+      // Use synchronized access to prevent race conditions
+      final completer = Completer<Response>();
+      final isFirstRequest = !_incomingRequests.containsKey(key);
+
+      if (!isFirstRequest) {
         _incomingRequests[key]!.add(completer);
         completer.future.then(
           (response) => handler.resolve(response),
-          onError: (e) => handler.reject(e as DioException),
+          onError: (e) => handler.reject(e),
         );
         return;
+      } else {
+        _incomingRequests[key] = [completer];
       }
 
-      // Check cache validity
+      // Check cache validity for first request only
       try {
         final cached = await _cacheManager.getData(key, options);
         if (cached != null &&
             !_isCacheExpired(cached, options, conditionalKey)) {
+          // Resolve all waiting completers
+          final completers = _incomingRequests.remove(key);
+          completers?.forEach((c) => c.complete(cached));
           handler.resolve(cached);
           return;
         } else {
-          _incomingRequests[key] = [Completer<Response>()];
           await _cacheManager.remove(key);
         }
-      } catch (_) {}
+      } catch (_) {
+        // On cache error, continue with network request
+      }
     }
 
-    // Initialize the incoming requests list for this key
     handler.next(options);
   }
 
-  /// Handles successful responses by caching them and resolving duplicate requests.
-  ///
-  /// This method:
-  /// 1. Stores the response in cache
-  /// 2. Resolves all waiting duplicate requests with the same response
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) async {
     final key = response.requestOptions.generateRequestKey;
@@ -211,6 +131,8 @@ class DioCachePlusInterceptor extends Interceptor {
     // Cache only successful responses (based on isErrorResponse check)
     if (!_isErrorResponse(response) && isCaching) {
       try {
+        // Ensure a Duration is present in requestOptions.extra for storage.
+        _injectComputedDurationIfNeeded(response.requestOptions);
         await _cacheManager.setData(key, response);
       } catch (_) {}
     }
@@ -231,7 +153,7 @@ class DioCachePlusInterceptor extends Interceptor {
   /// This method ensures that all duplicate requests receive the same error
   /// when a network request fails.
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) {
+  void onError(err, ErrorInterceptorHandler handler) {
     final key = err.requestOptions.generateRequestKey;
 
     final completers = _incomingRequests.remove(key);
@@ -242,6 +164,185 @@ class DioCachePlusInterceptor extends Interceptor {
     });
 
     handler.next(err);
+  }
+
+  /// Ensure a Duration is present in [options.extra] for caching.
+  ///
+  /// Precedence:
+  /// 1) If already present in options.extra[cacheValidityDurationKey] -> keep it.
+  /// 2) Else if expiryFn is present, call it and calculate remaining duration just before storage.
+  /// 3) Else if expiry is present, calculate remaining duration just before storage.
+  /// 4) Else if durationFn is present, call it just before storage.
+  /// 5) Else find first matching constructor-level rule and calculate duration just before storage.
+  /// 6) Else fallback to interceptor level _cacheDuration.
+  void _injectComputedDurationIfNeeded(RequestOptions options) {
+    try {
+      final extra = options.extra;
+
+      // Check if duration is already set
+      if (extra[SanitizerConstants.cacheValidityDurationKey] is Duration) {
+        return;
+      }
+
+      // Check for per-request expiryFn and calculate duration just before storage
+      final expiryFn =
+          extra[SanitizerConstants.expiryFnKey] as DateTime Function()?;
+      if (expiryFn != null) {
+        try {
+          final expiry = expiryFn();
+          final remaining = expiry.difference(DateTime.now());
+          final durationToStore =
+              remaining.isNegative ? Duration.zero : remaining;
+          options.extra = {
+            ...options.extra,
+            SanitizerConstants.cacheValidityDurationKey: durationToStore,
+          };
+          return;
+        } catch (_) {
+          // If function fails, fall through to next option
+        }
+      }
+
+      // Check for per-request expiry and calculate duration just before storage
+      final expiry = extra[SanitizerConstants.expiryKey] as DateTime?;
+      if (expiry != null) {
+        final remaining = expiry.difference(DateTime.now());
+        final durationToStore =
+            remaining.isNegative ? Duration.zero : remaining;
+        options.extra = {
+          ...options.extra,
+          SanitizerConstants.cacheValidityDurationKey: durationToStore,
+        };
+        return;
+      }
+
+      // Check for per-request durationFn and call it just before storage
+      final durationFn =
+          extra[SanitizerConstants.durationFnKey] as Duration Function()?;
+      if (durationFn != null) {
+        try {
+          final duration = durationFn();
+          options.extra = {
+            ...options.extra,
+            SanitizerConstants.cacheValidityDurationKey: duration,
+          };
+          return;
+        } catch (_) {
+          // If function fails, fall through to next option
+        }
+      }
+
+      // check constructor-level conditional rules (first match)
+      for (final entry in _conditionalCaching.entries) {
+        final rule = entry.value;
+        try {
+          if (rule.condition(
+            RequestDetails(
+              options.method,
+              options.uri.toString(),
+              options.queryParameters,
+            ),
+          )) {
+            // Calculate duration JUST BEFORE storage based on the rule
+            final duration = _calculateDurationFromRule(rule);
+            if (duration != null) {
+              options.extra = {
+                ...options.extra,
+                SanitizerConstants.cacheValidityDurationKey: duration,
+              };
+              return;
+            }
+            break;
+          }
+        } catch (_) {
+          // ignore matcher errors and keep searching
+        }
+      }
+
+      // fallback to interceptor default
+      options.extra = {
+        ...options.extra,
+        SanitizerConstants.cacheValidityDurationKey: _cacheDuration,
+      };
+    } catch (_) {}
+  }
+
+  /// Calculate duration from rule just before storage to ensure accurate expiry times
+  Duration? _calculateDurationFromRule(ConditionalCacheRule rule) {
+    // Precedence: expiryFn > expiry > durationFn > duration
+
+    if (rule.expiryFn != null) {
+      try {
+        final expiry = rule.expiryFn!();
+        final remaining = expiry.difference(DateTime.now());
+        return remaining.isNegative ? Duration.zero : remaining;
+      } catch (_) {
+        // If function fails, fall through to next option
+      }
+    }
+
+    if (rule.expiry != null) {
+      final remaining = rule.expiry!.difference(DateTime.now());
+      return remaining.isNegative ? Duration.zero : remaining;
+    }
+
+    if (rule.durationFn != null) {
+      try {
+        return rule.durationFn!();
+      } catch (_) {
+        // If function fails, fall through to next option
+      }
+    }
+
+    return rule.duration;
+  }
+
+  (bool, String) _cachingEnabled(RequestOptions options) {
+    final enableCache = options.extra[SanitizerConstants.enableCache];
+    final overrideConditional =
+        options.extra[SanitizerConstants.overrideConditionalCache] == true;
+
+    // Explicit enable/disable takes highest precedence
+    if (enableCache == true) {
+      return (true, options.generateRequestKey);
+    }
+    if (enableCache == false) {
+      if (overrideConditional) {
+        return (false, "");
+      }
+      // If not overriding conditional, still check conditional rules
+      final (conditional, key) = _isConditionalCaching(options);
+      return (conditional && !overrideConditional, key);
+    }
+
+    // No explicit enableCache setting
+    if (_cacheAll) {
+      return (true, options.generateRequestKey);
+    }
+
+    // Check conditional rules
+    return _isConditionalCaching(options);
+  }
+
+  (bool, String) _isConditionalCaching(RequestOptions options) {
+    if (_conditionalCaching.isEmpty) return (false, "");
+    try {
+      for (final kv in _conditionalCaching.entries) {
+        try {
+          final rule = kv.value;
+          if (rule.condition(
+            RequestDetails(
+              options.method,
+              options.uri.toString(),
+              options.queryParameters,
+            ),
+          )) {
+            return (true, options.generateRequestKey);
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return (false, "");
   }
 
   /// Checks if a cached response has expired based on the configured cache duration.
@@ -259,15 +360,14 @@ class DioCachePlusInterceptor extends Interceptor {
 
     final timestamp = DateTime.tryParse(timestampStr);
     if (timestamp == null) return true;
+
     Duration? duration =
-        conditionalKey.isEmpty ? null : _conditionalCaching[conditionalKey]?.$2;
-    duration ??=
         response.extra[SanitizerConstants.cacheValidityDurationKey] is Duration
             ? response.extra[SanitizerConstants.cacheValidityDurationKey]
-            : null;
-    duration ??= _cacheDuration;
+                as Duration
+            : _cacheDuration;
 
-    return DateTime.now().difference(timestamp) > (duration);
+    return DateTime.now().difference(timestamp) > duration;
   }
 
   /// Checks if a request should invalidate the cache and removes it if needed.
@@ -284,88 +384,29 @@ class DioCachePlusInterceptor extends Interceptor {
     } catch (_) {}
   }
 
-  (bool, String) _cachingEnabled(RequestOptions options) {
-    final enableCache = options.extra[SanitizerConstants.enableCache];
-    final overrideConditional =
-        options.extra[SanitizerConstants.overrideConditionalCache] == true;
-    final (conditional, key) = _isConditionalCaching(options);
-    if (enableCache == false) {
-      if (overrideConditional || !conditional) {
-        return (false, "");
-      }
-    }
-    final isCaching = _cacheAll || enableCache == true || conditional;
-    return (isCaching, key);
-  }
-
-  (bool, String) _isConditionalCaching(RequestOptions options) {
-    if (_conditionalCaching.isEmpty) return (false, "");
-    final key = _conditionalCaching.entries.firstWhere(
-      (a) => a.value.$1(
-        options.uri.toString().split("?").first,
-        options.queryParameters,
-      ),
-      orElse: () {
-        return MapEntry("", ((_, __) => false, null));
-      },
-    );
-    return (key.key.isNotEmpty, key.key);
-  }
-
-  final _conditionalCaching =
-      <String, (RequestMatcher matcher, Duration? duration)>{};
-
   /// Adds a conditional caching rule associated with the given [key].
   ///
   /// The [condition] is a function that takes a request URL and its query parameters,
   /// and returns `true` if the request should be cached.
-  ///
-  /// This method allows you to enable caching for only specific requests based on
-  /// custom matching logic.
-  ///
-  /// Example:
-  /// ```dart
-  /// DioCachePlusInterceptor.addConditionalCaching(
-  ///   'userCache',
-  ///   (url, query) => url.contains('/users') && query['active'] == true,
-  /// );
-  /// ```
   static void addConditionalCaching(
     String key,
-    RequestMatcher condition, [
-    Duration? duration,
-  ]) async {
+    ConditionalCacheRule rule,
+  ) async {
     try {
       await _instanceCompleter.future;
-      _instance!._conditionalCaching[key] ??= (condition, duration);
+      _instance!._conditionalCaching[key] ??= rule;
     } catch (_) {}
   }
 
   /// Removes a conditional caching rule associated with the given [key].
-  ///
-  /// If a rule exists for the provided [key], it will be removed from the internal
-  /// conditional caching map, and any cached data matching the associated condition
-  /// will also be cleared from the cache.
-  ///
-  /// This method allows you to disable previously added conditional caching logic.
-  ///
-  /// Example:
-  /// ```dart
-  /// DioCachePlusInterceptor.removeConditionalCaching('userCache');
-  /// ```
   static void removeConditionalCaching(String key) async {
     try {
       await _instanceCompleter.future;
-      final condition = _instance!._conditionalCaching.remove(key);
-      if (condition != null) {
-        _instance!._cacheManager.removeConditional(condition.$1);
-      }
+      _instance!._conditionalCaching.remove(key);
     } catch (_) {}
   }
 
   /// Clears all cached data.
-  ///
-  /// This method should remove all stored cache entries.
   static Future<void> clearAll() async {
     try {
       await _instanceCompleter.future;
