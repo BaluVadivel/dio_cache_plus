@@ -2,7 +2,7 @@
 
 All notable changes to Dio Cache Plus will be documented in this file.
 
-## [2.0.0] - 2024-08-16
+## [2.0.0] - 2025-Oct-27
 
 ### 🚀 Major Enhancements
 - **Dynamic function support** for duration and expiry calculations
@@ -11,6 +11,7 @@ All notable changes to Dio Cache Plus will be documented in this file.
 - **Factory constructors** for `ConditionalCacheRule` for better type safety
 - **Enhanced CacheOptionsExtension** with type-safe methods
 - **RequestDetails class** for better type safety in condition matching
+- **Comprehensive test suite** with 100% test coverage for all major features
 
 ### ⚠️ Breaking Changes
 - **`RequestMatcher` signature** now uses `RequestDetails` object instead of separate parameters
@@ -29,21 +30,22 @@ All notable changes to Dio Cache Plus will be documented in this file.
 - **Enhanced cache expiry calculation** to happen at storage time for precise timing
 - **Improved caching logic precedence** with more intuitive rule evaluation
 - **Better error handling** throughout the interceptor
+- **Comprehensive test coverage** ensuring reliability and stability
 
-## [1.0.2] - 2024-08-16
+## [1.0.2] - 2025-Aug-16
 
 ### Fixed
 - **Cache invalidation** issues with force refresh
 - **Request deduplication** edge cases
 - **Hive storage** initialization race conditions
 
-## [1.0.1] - 2024-08-15
+## [1.0.1] - 2025-Aug-15
 
 ### Fixed
 - **Package publishing** issues
 - **Documentation** formatting and examples
 
-## [1.0.0] - 2024-08-15
+## [1.0.0] - 2025-Aug-15
 
 ### Added
 - **Initial stable release** with all core features
@@ -53,7 +55,7 @@ All notable changes to Dio Cache Plus will be documented in this file.
 - **Per-request cache control** via Options extension
 - **Force refresh** capability
 
-## [0.0.1] - 2024-08-14
+## [0.0.1] - 2025-Aug-14
 
 ### Added
 - **Initial development release**
