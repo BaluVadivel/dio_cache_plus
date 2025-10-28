@@ -153,7 +153,13 @@ class DioCachePlusInterceptor extends Interceptor {
       try {
         // Ensure a Duration is present in requestOptions.extra for storage.
         _injectComputedDurationIfNeeded(response.requestOptions);
-        await _cacheManager.setData(key, response);
+        // Skip caching if duration is zero or null (immediate expiry)
+        final duration =
+            response.requestOptions.extra[SanitizerConstants
+                .cacheValidityDurationKey];
+        if (duration is Duration && duration != Duration.zero) {
+          await _cacheManager.setData(key, response);
+        }
       } catch (_) {}
     }
 
