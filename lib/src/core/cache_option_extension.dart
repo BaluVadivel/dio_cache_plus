@@ -12,13 +12,13 @@ extension CacheOptionsExtension on Options {
     bool overrideConditionalCache = false,
     bool invalidateCache = false,
   }) {
-    extra = {
-      ...?extra,
+    extra ??= {};
+    extra!.addAll({
       SanitizerConstants.enableCache: enableCache,
       SanitizerConstants.cacheValidityDurationKey: duration,
       SanitizerConstants.invalidateCacheKey: invalidateCache,
       SanitizerConstants.overrideConditionalCache: overrideConditionalCache,
-    };
+    });
     return this;
   }
 
@@ -29,13 +29,13 @@ extension CacheOptionsExtension on Options {
     bool overrideConditionalCache = false,
     bool invalidateCache = false,
   }) {
-    extra = {
-      ...?extra,
+    extra ??= {};
+    extra!.addAll({
       SanitizerConstants.enableCache: enableCache,
       SanitizerConstants.durationFnKey: durationFn,
       SanitizerConstants.invalidateCacheKey: invalidateCache,
       SanitizerConstants.overrideConditionalCache: overrideConditionalCache,
-    };
+    });
     return this;
   }
 
@@ -46,13 +46,13 @@ extension CacheOptionsExtension on Options {
     bool overrideConditionalCache = false,
     bool invalidateCache = false,
   }) {
-    extra = {
-      ...?extra,
+    extra ??= {};
+    extra!.addAll({
       SanitizerConstants.enableCache: enableCache,
       SanitizerConstants.expiryKey: expiry,
       SanitizerConstants.invalidateCacheKey: invalidateCache,
       SanitizerConstants.overrideConditionalCache: overrideConditionalCache,
-    };
+    });
     return this;
   }
 
@@ -63,13 +63,13 @@ extension CacheOptionsExtension on Options {
     bool overrideConditionalCache = false,
     bool invalidateCache = false,
   }) {
-    extra = {
-      ...?extra,
+    extra ??= {};
+    extra!.addAll({
       SanitizerConstants.enableCache: enableCache,
       SanitizerConstants.expiryFnKey: expiryFn,
       SanitizerConstants.invalidateCacheKey: invalidateCache,
       SanitizerConstants.overrideConditionalCache: overrideConditionalCache,
-    };
+    });
     return this;
   }
 
@@ -79,12 +79,12 @@ extension CacheOptionsExtension on Options {
     bool overrideConditionalCache = false,
     bool invalidateCache = false,
   }) {
-    extra = {
-      ...?extra,
+    extra ??= {};
+    extra!.addAll({
       SanitizerConstants.enableCache: enableCache,
       SanitizerConstants.invalidateCacheKey: invalidateCache,
       SanitizerConstants.overrideConditionalCache: overrideConditionalCache,
-    };
+    });
     return this;
   }
 }

@@ -193,10 +193,8 @@ class DioCachePlusInterceptor extends Interceptor {
           final remaining = expiry.difference(DateTime.now());
           final durationToStore =
               remaining.isNegative ? Duration.zero : remaining;
-          options.extra = {
-            ...options.extra,
-            SanitizerConstants.cacheValidityDurationKey: durationToStore,
-          };
+          options.extra[SanitizerConstants.cacheValidityDurationKey] =
+              durationToStore;
           return;
         } catch (_) {
           // If function fails, fall through to next option
@@ -209,10 +207,8 @@ class DioCachePlusInterceptor extends Interceptor {
         final remaining = expiry.difference(DateTime.now());
         final durationToStore =
             remaining.isNegative ? Duration.zero : remaining;
-        options.extra = {
-          ...options.extra,
-          SanitizerConstants.cacheValidityDurationKey: durationToStore,
-        };
+        options.extra[SanitizerConstants.cacheValidityDurationKey] =
+            durationToStore;
         return;
       }
 
@@ -222,10 +218,7 @@ class DioCachePlusInterceptor extends Interceptor {
       if (durationFn != null) {
         try {
           final duration = durationFn();
-          options.extra = {
-            ...options.extra,
-            SanitizerConstants.cacheValidityDurationKey: duration,
-          };
+          options.extra[SanitizerConstants.cacheValidityDurationKey] = duration;
           return;
         } catch (_) {
           // If function fails, fall through to next option
@@ -246,10 +239,8 @@ class DioCachePlusInterceptor extends Interceptor {
             // Calculate duration JUST BEFORE storage based on the rule
             final duration = _calculateDurationFromRule(rule);
             if (duration != null) {
-              options.extra = {
-                ...options.extra,
-                SanitizerConstants.cacheValidityDurationKey: duration,
-              };
+              options.extra[SanitizerConstants.cacheValidityDurationKey] =
+                  duration;
               return;
             }
             break;
@@ -260,10 +251,8 @@ class DioCachePlusInterceptor extends Interceptor {
       }
 
       // fallback to interceptor default
-      options.extra = {
-        ...options.extra,
-        SanitizerConstants.cacheValidityDurationKey: _cacheDuration,
-      };
+      options.extra[SanitizerConstants.cacheValidityDurationKey] =
+          _cacheDuration;
     } catch (_) {}
   }
 
