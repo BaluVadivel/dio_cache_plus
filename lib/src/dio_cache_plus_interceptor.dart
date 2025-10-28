@@ -107,6 +107,9 @@ class DioCachePlusInterceptor extends Interceptor {
         final cached = await _cacheManager.getData(key, options);
         if (cached != null &&
             !_isCacheExpired(cached, options, conditionalKey)) {
+          // Mark this response as served from cache to prevent redundant storage
+          options.extra['_servedFromCache'] = true;
+
           // Resolve all waiting completers
           final completers = _incomingRequests.remove(key);
           completers?.forEach((c) => c.complete(cached));
@@ -127,6 +130,23 @@ class DioCachePlusInterceptor extends Interceptor {
   void onResponse(Response response, ResponseInterceptorHandler handler) async {
     final key = response.requestOptions.generateRequestKey;
     final (isCaching, _) = _cachingEnabled(response.requestOptions);
+
+    // Skip cache storage if this response was served from cache
+    if (response.requestOptions.extra['_servedFromCache'] == true) {
+      // Clean up the flag
+      response.requestOptions.extra.remove('_servedFromCache');
+
+      // Always notify all waiting requests, whether successful or failed
+      final completers = _incomingRequests.remove(key);
+      completers?.forEach((completer) {
+        if (!completer.isCompleted) {
+          completer.complete(response);
+        }
+      });
+
+      handler.next(response);
+      return;
+    }
 
     // Cache only successful responses (based on isErrorResponse check)
     if (!_isErrorResponse(response) && isCaching) {
