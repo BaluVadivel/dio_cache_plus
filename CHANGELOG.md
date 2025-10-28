@@ -2,6 +2,13 @@
 
 All notable changes to Dio Cache Plus will be documented in this file.
 
+## [2.0.1] - 2025-Oct-8
+
+### Optimizations
+- **Skip caching** when validity duration is zero or null
+- **Prevent duplicate cache overwriting** from cached responses
+- **Preserve extra map reference** in request options
+
 ## [2.0.0] - 2025-Oct-27
 
 ### 🚀 Major Enhancements
