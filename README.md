@@ -328,6 +328,11 @@ DioCachePlusInterceptor.addConditionalCaching(
 // Remove a rule
 DioCachePlusInterceptor.removeConditionalCaching('user_cache');
 
+// Remove cached data based on condition
+DioCachePlusInterceptor.removeConditionalCachingData(
+  (request) => request.method == 'GET' && request.url.contains('/users'),
+);
+
 // Clear all cached data (but keep rules)
 await DioCachePlusInterceptor.clearAll();
 ```
@@ -372,6 +377,7 @@ When multiple duration/expiry options are provided, they are evaluated in this o
 
 - **Force Refresh**: `invalidateCache: true` removes existing cache before making the network request
 - **Automatic Expiration**: Entries expire based on their configured duration or absolute expiry
+- **Conditional Data Removal**: `removeConditionalCachingData()` removes cached data matching specific patterns
 - **Global Clear**: `clearAll()` wipes the entire cache
 
 ## 📚 API Reference
@@ -390,6 +396,7 @@ The main interceptor class.
 **Static Methods:**
 - `addConditionalCaching(String key, ConditionalCacheRule rule)` - Adds a conditional caching rule
 - `removeConditionalCaching(String key)` - Removes a conditional rule
+- `removeConditionalCachingData(RequestMatcher condition)` - Removes cached data matching the condition
 - `clearAll()` - Clears all cached data
 
 ### CacheOptionsExtension

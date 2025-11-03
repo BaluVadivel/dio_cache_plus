@@ -2,7 +2,12 @@
 
 All notable changes to Dio Cache Plus will be documented in this file.
 
-## [2.0.1] - 2025-Oct-8
+## [2.0.2] - 2025-Nov-03
+
+### Added
+- **Conditional cache data removal** - New `removeConditionalCachingData()` method to remove cached data based on request patterns
+
+## [2.0.1] - 2025-Oct-28
 
 ### Optimizations
 - **Skip caching** when validity duration is zero or null
