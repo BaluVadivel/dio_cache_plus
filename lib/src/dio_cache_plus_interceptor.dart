@@ -421,6 +421,16 @@ class DioCachePlusInterceptor extends Interceptor {
     } catch (_) {}
   }
 
+  /// Removes a conditional caching Data which all matched with the given [condition].
+  static Future<void> removeConditionalCachingData(
+    RequestMatcher condition,
+  ) async {
+    try {
+      await _instanceCompleter.future;
+      await _instance!._cacheManager.removeConditional(condition);
+    } catch (_) {}
+  }
+
   /// Clears all cached data.
   static Future<void> clearAll() async {
     try {
