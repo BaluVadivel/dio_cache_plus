@@ -259,7 +259,7 @@ class DioCachePlusInterceptor extends Interceptor {
             RequestDetails(
               options.method,
               options.uri.toString(),
-              options.queryParameters,
+              _extractQueryParameters(options),
             ),
           )) {
             // Calculate duration JUST BEFORE storage based on the rule
@@ -280,6 +280,16 @@ class DioCachePlusInterceptor extends Interceptor {
       options.extra[SanitizerConstants.cacheValidityDurationKey] =
           _cacheDuration;
     } catch (_) {}
+  }
+
+  Map<String, dynamic> _extractQueryParameters(RequestOptions options) {
+    final uri = options.uri.toString();
+    if (uri.contains("?")) {
+      final parsedUri = Uri.parse(uri);
+
+      return {...parsedUri.queryParameters, ...options.queryParameters};
+    }
+    return options.queryParameters;
   }
 
   /// Calculate duration from rule just before storage to ensure accurate expiry times
@@ -349,7 +359,7 @@ class DioCachePlusInterceptor extends Interceptor {
             RequestDetails(
               options.method,
               options.uri.toString(),
-              options.queryParameters,
+              _extractQueryParameters(options),
             ),
           )) {
             return (true, options.generateRequestKey);
