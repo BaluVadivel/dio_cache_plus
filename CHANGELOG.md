@@ -2,6 +2,13 @@
 
 All notable changes to Dio Cache Plus will be documented in this file.
 
+## [2.0.3] - 2025-Nov-04
+
+### Fixed
+- **Query parameters extraction** - Properly merge query parameters from both URL string and request options
+- **Conditional rule matching** - Use complete query parameters for accurate request pattern matching
+- **Cache consistency** - Ensure parameterized requests are correctly identified for caching rules
+
 ## [2.0.2] - 2025-Nov-03
 
 ### Added
