@@ -1,5 +1,6 @@
 // lib/src/core/cache_manager/hive_cache_manager.dart
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -17,18 +18,31 @@ class HiveCacheManager implements SanitizerCacheManager {
   late final Box<HiveCachedResponse> _box;
   late final _RequestKeyGenerator _keyManager;
   bool _isInitialized = false;
+  Completer<void>? _initCompleter;
 
   HiveCacheManager() {
-    _initHive();
     _keyManager = _RequestKeyGenerator();
+  }
+
+  Future<void> _ensureInitialized() async {
+    if (_isInitialized) return;
+    if (_initCompleter != null) {
+      return _initCompleter!.future;
+    }
+    _initCompleter = Completer<void>();
+    await _initHive();
+    _initCompleter!.complete();
   }
 
   Future<void> _initHive() async {
     if (!_isInitialized) {
       await Hive.initFlutter();
-      Hive
-        ..registerAdapter(HiveCachedResponseAdapter())
-        ..registerAdapter(DurationAdapter());
+      if (!Hive.isAdapterRegistered(HiveCachedResponseAdapter().typeId)) {
+        Hive.registerAdapter(HiveCachedResponseAdapter());
+      }
+      if (!Hive.isAdapterRegistered(DurationAdapter().typeId)) {
+        Hive.registerAdapter(DurationAdapter());
+      }
 
       const currentVersion = 2; // ← increment when schema changes
       const boxName = '${SanitizerConstants.hiveBoxName}_v$currentVersion';
@@ -89,9 +103,7 @@ class HiveCacheManager implements SanitizerCacheManager {
 
   @override
   Future<void> removeConditional(RequestMatcher condition) async {
-    if (!_isInitialized) {
-      await _initHive();
-    }
+    await _ensureInitialized();
     final selectedKeys = _box.values
         .where(
           (a) => condition(
@@ -102,12 +114,6 @@ class HiveCacheManager implements SanitizerCacheManager {
     _keyManager._removeKeys(selectedKeys.toSet());
     for (final key in selectedKeys) {
       await _box.delete(key);
-    }
-  }
-
-  Future<void> _ensureInitialized() async {
-    if (!_isInitialized) {
-      await _initHive();
     }
   }
 }
