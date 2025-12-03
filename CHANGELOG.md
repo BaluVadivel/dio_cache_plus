@@ -2,6 +2,11 @@
 
 All notable changes to Dio Cache Plus will be documented in this file.
 
+## [2.0.4] - 2025-Dec-03
+
+### Fixed
+- Fixed HiveCacheManager init to avoid duplicate adapter registration
+
 ## [2.0.3] - 2025-Nov-04
 
 ### Fixed
