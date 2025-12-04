@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:dio_cache_plus/src/core/models/typedef.dart';
 import 'package:dio_cache_plus/src/core/request_key_generator_extension.dart';
+import 'package:flutter/foundation.dart';
 
 import 'core/cache_manager/cache_manager.dart';
 import 'core/cache_manager/hive_cache_manager.dart';
@@ -105,6 +106,9 @@ class DioCachePlusInterceptor extends Interceptor {
       // Check cache validity for first request only
       try {
         final cached = await _cacheManager.getData(key, options);
+        if (kDebugMode) {
+          debugPrint("DioCachePlus : ==> KEY: $key");
+        }
         if (cached != null &&
             !_isCacheExpired(cached, options, conditionalKey)) {
           // Mark this response as served from cache to prevent redundant storage
@@ -114,9 +118,11 @@ class DioCachePlusInterceptor extends Interceptor {
           final completers = _incomingRequests.remove(key);
           completers?.forEach((c) => c.complete(cached));
           handler.resolve(cached);
+          _logCache("HIT", "Served From Cache", key);
           return;
         } else {
           await _cacheManager.remove(key);
+          _logCache("MISS", "No Cached data available", key);
         }
       } catch (_) {
         // On cache error, continue with network request
@@ -159,6 +165,9 @@ class DioCachePlusInterceptor extends Interceptor {
                 .cacheValidityDurationKey];
         if (duration is Duration && duration != Duration.zero) {
           await _cacheManager.setData(key, response);
+          _logCache("SAVE", "Saved to Cache", key);
+        } else {
+          _logCache("SKIP", "Skipped saving the Cache for now", key);
         }
       } catch (_) {}
     }
@@ -190,6 +199,17 @@ class DioCachePlusInterceptor extends Interceptor {
     });
 
     handler.next(err);
+  }
+
+  String _pad(String msg, {int width = 35}) {
+    if (msg.length >= width) return msg;
+    return msg + ' ' * (width - msg.length);
+  }
+
+  void _logCache(String tag, String message, String key) {
+    if (kDebugMode) {
+      debugPrint("DioCachePlus : [$tag] ${_pad(message)} || KEY: $key");
+    }
   }
 
   /// Ensure a Duration is present in [options.extra] for caching.

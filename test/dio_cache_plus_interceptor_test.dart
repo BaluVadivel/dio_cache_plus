@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:dio_cache_plus/dio_cache_plus.dart';
-import 'package:dio_cache_plus/src/core/models/typedef.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // Mock interceptor that simulates network responses
