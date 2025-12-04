@@ -2,6 +2,11 @@
 
 All notable changes to Dio Cache Plus will be documented in this file.
 
+## [2.0.5] - 2025-Dec-04
+
+### Added
+- Added logs in debug mode
+
 ## [2.0.4] - 2025-Dec-03
 
 ### Fixed
