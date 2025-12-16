@@ -87,4 +87,14 @@ extension CacheOptionsExtension on Options {
     });
     return this;
   }
+
+  /// Marks the request to persist the response for later reuse.
+  Options saveResponse({Duration duration = const Duration(days: 7)}) {
+    extra ??= {};
+    extra!.addAll({
+      SanitizerConstants.saveResponse: true,
+      SanitizerConstants.cacheValidityDurationKey: duration,
+    });
+    return this;
+  }
 }

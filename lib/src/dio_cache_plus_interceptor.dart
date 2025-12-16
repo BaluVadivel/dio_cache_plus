@@ -71,6 +71,46 @@ class DioCachePlusInterceptor extends Interceptor {
     _cacheManager = cacheManager ?? HiveCacheManager();
   }
 
+  /// Returns cached response if available.
+  /// Does NOT trigger network call.
+  ///
+  /// [ignoreExpiry] = true → return even expired cache
+  /// [ignoreExpiry] = false → respect expiry & auto-remove
+  static Future<Response?> getCacheData({
+    required String url,
+    String method = 'GET',
+    Map<String, dynamic>? queryParameters,
+    dynamic body,
+    bool ignoreExpiry = true,
+  }) async {
+    try {
+      // Ensure interceptor instance is initialized
+      await _instanceCompleter.future;
+
+      final options = RequestOptions(
+        path: url,
+        method: method,
+        queryParameters: queryParameters ?? const {},
+        data: body,
+      );
+
+      // Generates EXACT same key as onRequest
+      final key = options.generateRequestKey;
+
+      final cached = await _instance!._cacheManager.getData(key, options);
+      if (cached == null) return null;
+
+      if (!ignoreExpiry && _instance!._isCacheExpired(cached, options, key)) {
+        await _instance!._cacheManager.remove(key);
+        return null;
+      }
+
+      return cached;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Handles incoming requests by checking cache and deduplicating requests.
   ///
   /// This method:
@@ -153,9 +193,10 @@ class DioCachePlusInterceptor extends Interceptor {
       handler.next(response);
       return;
     }
-
+    final saveResponse =
+        response.requestOptions.extra[SanitizerConstants.saveResponse] == true;
     // Cache only successful responses (based on isErrorResponse check)
-    if (!_isErrorResponse(response) && isCaching) {
+    if (!_isErrorResponse(response) && (isCaching || saveResponse)) {
       try {
         // Ensure a Duration is present in requestOptions.extra for storage.
         _injectComputedDurationIfNeeded(response.requestOptions);
@@ -227,6 +268,12 @@ class DioCachePlusInterceptor extends Interceptor {
 
       // Check if duration is already set
       if (extra[SanitizerConstants.cacheValidityDurationKey] is Duration) {
+        return;
+      }
+
+      if (extra[SanitizerConstants.saveResponse] == true) {
+        options.extra[SanitizerConstants
+            .cacheValidityDurationKey] ??= const Duration(days: 7);
         return;
       }
 

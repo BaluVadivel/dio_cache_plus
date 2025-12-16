@@ -22,6 +22,8 @@ Completely reworked and expanded with a modern API, expiry-based caching, dynami
 ✅ **Automatic Migration** — safe schema updates without crashes.  
 ✅ **Global or Local Cache Management** — total flexibility.  
 ✅ **Accurate Time-Based Expiry** — expiry calculations happen at storage time for precision.
+✅ **Manual Cache Persistence** — explicitly save responses without enabling request caching.  
+✅ **Direct Cache Access** — fetch cached responses without triggering a network call.
 
 ---
 
@@ -266,6 +268,54 @@ final responses = await Future.wait(futures);
 // Only 1 actual network request was made 🎯
 ```
 
+### Save Response Without Enabling Cache
+
+Persist a response even when normal caching is disabled:
+
+```dart
+// Uses default expiry (7 days)
+final response = await dio.get(
+  'https://www.example.com/api/profile',
+  options: Options().saveResponse(),
+);
+
+// Custom expiry duration
+final responseWithDuration = await dio.get(
+  'https://www.example.com/api/profile',
+  options: Options().saveResponse(
+    duration: const Duration(days: 30),
+  ),
+);
+
+```
+
+> Useful for one-time persistence, background syncs, or offline access.
+
+### Read Cached Data Without Network Call
+
+Fetch cached data directly using the same cache key logic:
+
+```dart
+final cachedResponse = await DioCachePlusInterceptor.getCacheData(
+  url: 'https://www.example.com/api/profile',
+);
+
+if (cachedResponse != null) {
+  print(cachedResponse.data);
+}
+```
+
+* Does **not** trigger a network request
+* Uses the **exact same cache key** as interceptor flow
+* Can optionally respect expiry
+
+```dart
+await DioCachePlusInterceptor.getCacheData(
+  url: 'https://www.example.com/api/profile',
+  ignoreExpiry: false,
+);
+```
+
 ## 🔧 Runtime Rule Management
 
 Add or remove conditional caching rules dynamically at runtime:
@@ -346,6 +396,8 @@ await DioCachePlusInterceptor.clearAll();
 3. **Expiry Validation**: If cached data exists, its timestamp is checked against the configured duration/expiry.
 4. **Network Fallback**: If no valid cache exists, the request proceeds to the network.
 5. **Storage**: Successful responses are stored with precise expiry calculation at storage time.
+6. **Forced Persistence**: Requests marked with `saveResponse` are persisted with a configurable expiry even if caching is disabled.
+
 
 ### Smart Expiry Calculation
 
@@ -398,6 +450,7 @@ The main interceptor class.
 - `removeConditionalCaching(String key)` - Removes a conditional rule
 - `removeConditionalCachingData(RequestMatcher condition)` - Removes cached data matching the condition
 - `clearAll()` - Clears all cached data
+- `getCacheData(...)` - Returns cached response directly without making a network request
 
 ### CacheOptionsExtension
 
@@ -410,6 +463,7 @@ Per-request cache control via `Options` extension methods:
 | `setCachingWithExpiry` | `enableCache`, `expiry`, `overrideConditionalCache`, `invalidateCache` | Caching with static expiry DateTime |
 | `setCachingWithExpiryFn` | `enableCache`, `expiryFn`, `overrideConditionalCache`, `invalidateCache` | Caching with dynamic expiry function |
 | `setCaching` | `enableCache`, `overrideConditionalCache`, `invalidateCache` | Simple caching (uses global default) |
+| `saveResponse` | `duration` | Persists the response with a configurable expiry without enabling request-level caching |
 
 ### ConditionalCacheRule Factory Constructors
 

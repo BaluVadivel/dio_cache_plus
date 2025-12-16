@@ -18,6 +18,7 @@ class SanitizerConstants {
 
   static const String invalidateCacheKey = "invalidateCache";
   static const String enableCache = "enableCache";
+  static const String saveResponse = "saveResponse";
   static const String overrideConditionalCache = "overrideConditionalCache";
   static const String hiveBoxName = "sanitizer_hive_box";
 }
