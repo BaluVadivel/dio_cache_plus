@@ -2,6 +2,12 @@
 
 All notable changes to Dio Cache Plus will be documented in this file.
 
+## [2.0.6] - 2025-Dec-16
+
+### Added
+- Added `getCacheData()` to fetch cached responses without making a network call.
+- Added `saveResponse` option to persist responses with a configurable expiry, even when caching is disabled.
+
 ## [2.0.5] - 2025-Dec-04
 
 ### Added
