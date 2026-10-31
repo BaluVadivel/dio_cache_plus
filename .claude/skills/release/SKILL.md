@@ -32,10 +32,12 @@ Prepare the release, then stop. Never stage, commit, tag, push or publish unless
 - `dart pub publish --dry-run`: must show 0 warnings. Check the file list contains no `CLAUDE.md`, `.claude/`, `build/`, `.dart_tool/`, `pubspec.lock` or IDE files.
 
 ## 6. Hand off
+Publishing runs in GitHub Actions (`.github/workflows/publish.yml`): pushing a `vX.Y.Z` tag re-runs all checks, verifies the tag matches `pubspec.yaml` and is on `main`, then waits for approval in the `pub.dev` environment before publishing.
+
 Show the diff of the release edits and give the user, without running them:
 - commit message: `version X.Y.Z`
-- `git tag vX.Y.Z`
-- `git push origin main --tags`
-- `dart pub publish`
+- `git push origin main`, then wait for CI to pass on main
+- `git tag vX.Y.Z` and `git push origin vX.Y.Z`
+- approve the "Publish to pub.dev" run in GitHub Actions
 
-Run any of these only when the user explicitly says to, one action at a time.
+Run any of these only when the user explicitly says to, one action at a time. Never run `dart pub publish` locally; releases go through the workflow.
