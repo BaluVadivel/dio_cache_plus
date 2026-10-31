@@ -1,5 +1,12 @@
 # Dio Cache Plus
 
+[![pub package](https://img.shields.io/pub/v/dio_cache_plus.svg)](https://pub.dev/packages/dio_cache_plus)
+[![pub points](https://img.shields.io/pub/points/dio_cache_plus)](https://pub.dev/packages/dio_cache_plus/score)
+[![likes](https://img.shields.io/pub/likes/dio_cache_plus)](https://pub.dev/packages/dio_cache_plus/score)
+[![downloads](https://img.shields.io/pub/dm/dio_cache_plus)](https://pub.dev/packages/dio_cache_plus/score)
+[![CI](https://github.com/BaluVadivel/dio_cache_plus/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/BaluVadivel/dio_cache_plus/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/github/license/BaluVadivel/dio_cache_plus)](https://github.com/BaluVadivel/dio_cache_plus/blob/main/LICENSE)
+
 **Dio Cache Plus** is an advanced caching interceptor for Dio — offering per-request control, smart conditional caching, absolute expiry support, dynamic function-based durations, and efficient request deduplication.
 
 ---
