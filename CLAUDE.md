@@ -25,6 +25,12 @@ Dio interceptor for response caching, request deduplication and conditional cach
 - A force-refresh request that arrives while an identical request is in flight joins that in-flight request.
 - `getCacheData(url:)` needs the full URL including `baseUrl`.
 
+## CI
+- `.github/workflows/ci.yml` runs on every PR and push to `main`: `verify` (format, `flutter analyze --fatal-infos`, tests, publish dry run on Flutter 3.35.6) and `compat` (the minimum SDK on Flutter 3.29.3 / Dart 3.7.2, and Dio 4.0.0 via `pubspec_overrides.yaml`). `compat` runs `flutter pub get --no-example` and checks only `lib` and `test`, because the example needs a newer SDK and Dio 5.
+- Dio 4 check locally: create `pubspec_overrides.yaml` with `dependency_overrides: {dio: 4.0.0}`, run `flutter pub get --no-example && flutter analyze lib test && flutter test`, then delete it.
+- Tests must build on Dio 4 and 5: match errors with the `isDioError` matcher, not `DioException` or `DioError`, and give every `Dio`, and every `RequestOptions` that gets stored, a `baseUrl` (Dio 4.0.0's `RequestOptions.uri` throws on a relative path without one).
+- Keep the Flutter versions in `ci.yml` and `publish.yml` in sync; raise the `compat` Flutter version if the pubspec's minimum SDK changes.
+
 ## Git workflow
 - `main` is protected: no direct pushes or force pushes. Every change goes through a branch and a pull request, and merges only once the `verify` CI check (`.github/workflows/ci.yml`) passes.
 - Only the repository admin can create `v*` tags.

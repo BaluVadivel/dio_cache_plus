@@ -1,4 +1,6 @@
 name: Publish to pub.dev
+# Title each run by its tag (Publish v2.2.0) instead of the commit message.
+run-name: Publish ${{ github.ref_name }}
 
 # Only a pushed version tag (e.g. v2.1.0) starts a release. pub.dev also
 # checks the repository and tag pattern configured in its admin settings.
@@ -55,7 +57,7 @@ jobs:
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed lib test example/lib
 
-      - run: flutter analyze
+      - run: flutter analyze --fatal-infos
 
       - run: flutter test
 

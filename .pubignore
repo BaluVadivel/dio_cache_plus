@@ -33,6 +33,9 @@ pubspec.lock
 .flutter-plugins-dependencies
 build/
 
+# Local dependency overrides (used for the Dio 4 check)
+pubspec_overrides.yaml
+
 # Claude Code files (not part of the published package)
 CLAUDE.md
 CLAUDE.local.md
