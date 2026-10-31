@@ -33,7 +33,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  dio_cache_plus: ^2.0.0
+  dio_cache_plus: ^2.1.0
 ```
 
 Then, install it by running:
