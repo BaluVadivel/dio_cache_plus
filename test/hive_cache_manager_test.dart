@@ -10,8 +10,12 @@ import 'package:hive/hive.dart';
 const _pathProvider = MethodChannel('plugins.flutter.io/path_provider');
 
 Response _response(String path, {Map<String, dynamic>? query}) {
-  final options = RequestOptions(path: path, queryParameters: query)
-    ..extra['cache_validity_duration'] = const Duration(minutes: 5);
+  // Real apps set a base URL; Dio 4.0.0 can't build a URI without one.
+  final options = RequestOptions(
+    path: path,
+    baseUrl: 'https://example.com',
+    queryParameters: query,
+  )..extra['cache_validity_duration'] = const Duration(minutes: 5);
   return Response(
     requestOptions: options,
     data: {'path': path},
@@ -111,8 +115,14 @@ void main() {
             isNull,
           );
         }
-        expect(await manager.getData('keep', RequestOptions()), isNotNull);
-        expect(await manager.getData('boom', RequestOptions()), isNotNull);
+        expect(
+          await manager.getData('keep', RequestOptions(path: '')),
+          isNotNull,
+        );
+        expect(
+          await manager.getData('boom', RequestOptions(path: '')),
+          isNotNull,
+        );
       },
     );
   });

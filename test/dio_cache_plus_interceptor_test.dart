@@ -108,6 +108,17 @@ class InMemoryCacheManager implements SanitizerCacheManager {
   }
 }
 
+/// A Dio request error. Dio 4 throws `DioError` and Dio 5 `DioException`, and
+/// CI runs these tests on both, so match by what both have instead of by name.
+final isDioError = isA<Exception>().having(
+  (e) => (e as dynamic).requestOptions,
+  'requestOptions',
+  isA<RequestOptions>(),
+);
+
+/// Real apps set a base URL; Dio 4.0.0 can't build a request URI without one.
+const baseUrl = 'https://example.com';
+
 void main() {
   late Dio dio;
   late DioCachePlusInterceptor cacheInterceptor;
@@ -116,7 +127,7 @@ void main() {
 
   setUp(() {
     DioCachePlusInterceptor.resetInstance();
-    dio = Dio();
+    dio = Dio(BaseOptions(baseUrl: baseUrl));
     mockAdapter = MockNetworkAdapter({
       '/test': {'data': 'test'},
       '/users': {
@@ -491,7 +502,7 @@ void main() {
                 .then<Object>((r) => r, onError: (Object e) => e),
           ),
         );
-        expect(results, everyElement(isA<DioException>()));
+        expect(results, everyElement(isDioError));
         expect(mockAdapter.callCount, 1);
 
         mockAdapter.statusCode = 200;
@@ -524,7 +535,9 @@ void main() {
 
         // Saved responses are not served from cache automatically
         expect(mockAdapter.callCount, 2);
-        final saved = await DioCachePlusInterceptor.getCacheData(url: '/news');
+        final saved = await DioCachePlusInterceptor.getCacheData(
+          url: '$baseUrl/news',
+        );
         expect(saved?.data, {
           'news': ['news1', 'news2'],
         });
@@ -536,7 +549,7 @@ void main() {
       await dio.post('/news', data: form, options: Options().saveResponse());
 
       final saved = await DioCachePlusInterceptor.getCacheData(
-        url: '/news',
+        url: '$baseUrl/news',
         method: 'POST',
         body: form,
       );
@@ -628,7 +641,9 @@ void main() {
       cacheManager.setStoredAt(
         DateTime.now().subtract(const Duration(seconds: 70)),
       );
-      final stale = await DioCachePlusInterceptor.getCacheData(url: '/test');
+      final stale = await DioCachePlusInterceptor.getCacheData(
+        url: '$baseUrl/test',
+      );
       expect(status(stale!)!.single, startsWith('$name; hit; ttl=-'));
       final ttl = int.parse(
         RegExp(r'ttl=(-?\d+)').firstMatch(status(stale)!.single)!.group(1)!,
@@ -753,12 +768,22 @@ void main() {
 
     test('error responses are not marked', () async {
       mockAdapter.statusCode = 500;
-      try {
-        await dio.get('/test', options: cached());
-        fail('expected DioException');
-      } on DioException catch (e) {
-        expect(e.response?.headers['cache-status'], isNull);
-      }
+      await expectLater(
+        dio.get('/test', options: cached()),
+        throwsA(
+          isDioError
+              .having(
+                (e) => (e as dynamic).response?.statusCode,
+                'response status',
+                500,
+              )
+              .having(
+                (e) => (e as dynamic).response?.headers['cache-status'],
+                'cache-status header',
+                isNull,
+              ),
+        ),
+      );
     });
   });
 
@@ -770,7 +795,8 @@ void main() {
         '/test': {'data': 'test'},
       });
       final store = InMemoryCacheManager();
-      final throwingDio = Dio()..httpClientAdapter = adapter;
+      final throwingDio = Dio(BaseOptions(baseUrl: baseUrl))
+        ..httpClientAdapter = adapter;
       throwingDio.interceptors.add(
         DioCachePlusInterceptor(
           cacheAll: true,

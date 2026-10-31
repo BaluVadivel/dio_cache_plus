@@ -31,9 +31,51 @@ jobs:
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed lib test example/lib
 
-      - run: flutter analyze
+      - run: flutter analyze --fatal-infos
 
       - run: flutter test
 
       - name: Publish dry run
         run: dart pub publish --dry-run
+
+  # The pubspec promises Dart ^3.7.2 and Dio >=4.0.0 <6.0.0; check both ends.
+  # Only lib and test: the example needs a newer SDK and uses Dio 5.
+  compat:
+    name: compat (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: minimum Dart SDK
+            flutter: 3.29.3 # Dart 3.7.2
+          - name: Dio 4.0.0
+            flutter: 3.35.6
+            dio: 4.0.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ matrix.flutter }}
+          cache: true
+
+      - name: Pin Dio ${{ matrix.dio }}
+        if: matrix.dio
+        env:
+          DIO_VERSION: ${{ matrix.dio }}
+        run: |
+          printf 'dependency_overrides:\n  dio: %s\n' "$DIO_VERSION" > pubspec_overrides.yaml
+
+      - run: flutter pub get --no-example
+
+      - name: Resolved Dart and Dio versions
+        run: |
+          dart --version
+          dart pub deps --style=compact | grep -E '^- dio '
+
+      - run: flutter analyze lib test
+
+      - run: flutter test
