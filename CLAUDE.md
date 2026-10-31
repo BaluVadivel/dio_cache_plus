@@ -24,6 +24,11 @@ Dio interceptor for response caching, request deduplication and conditional cach
 - A force-refresh request that arrives while an identical request is in flight joins that in-flight request.
 - `getCacheData(url:)` needs the full URL including `baseUrl`.
 
+## Git workflow
+- `main` is protected: no direct pushes or force pushes. Every change goes through a branch and a pull request, and merges only once the `verify` CI check (`.github/workflows/ci.yml`) passes.
+- Only the repository admin can create `v*` tags.
+
 ## Releases
-- Use `/release`. Version bump in `pubspec.yaml`, CHANGELOG entry dated like `2025-Dec-16`, git tag `vX.Y.Z`.
+- Use `/release`. Version bump in `pubspec.yaml`, CHANGELOG entry dated like `2025-Dec-16`, merged via a `release/vX.Y.Z` pull request.
+- Pushing a `vX.Y.Z` tag on `main` runs `.github/workflows/publish.yml`, which publishes to pub.dev after manual approval in the `pub.dev` environment. Never run `dart pub publish` locally.
 - Keep user-facing changes under `## [Unreleased]` in CHANGELOG.md until release.
