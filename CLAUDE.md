@@ -31,5 +31,5 @@ Dio interceptor for response caching, request deduplication and conditional cach
 
 ## Releases
 - Use `/release`. Version bump in `pubspec.yaml`, CHANGELOG entry dated like `2025-Dec-16`, merged via a `release/vX.Y.Z` pull request.
-- Pushing a `vX.Y.Z` tag on `main` runs `.github/workflows/publish.yml`, which publishes to pub.dev after manual approval in the `pub.dev` environment. Never run `dart pub publish` locally.
+- Pushing a `vX.Y.Z` tag on `main` runs `.github/workflows/publish.yml`, which publishes to pub.dev after manual approval in the `pub.dev` environment, then creates the GitHub Release (title `X.Y.Z`, the version's CHANGELOG section, then a link to all code changes since the previous version; see `.github/scripts/`). Never run `dart pub publish` locally or create GitHub Releases by hand.
 - Keep user-facing changes under `## [Unreleased]` in CHANGELOG.md until release.

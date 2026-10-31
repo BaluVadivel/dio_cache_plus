@@ -37,13 +37,13 @@ Prepare the release, then stop. Never create branches, stage, commit, tag, push 
 - `dart pub publish --dry-run`: the only acceptable warning is "checked-in files are modified" for the uncommitted release edits; anything else must be fixed. Check the file list contains no `CLAUDE.md`, `.claude/`, `build/`, `.dart_tool/`, `pubspec.lock` or IDE files.
 
 ## 7. Hand off
-Publishing runs in GitHub Actions (`.github/workflows/publish.yml`): pushing a `vX.Y.Z` tag re-runs all checks, verifies the tag matches `pubspec.yaml` and is on `main`, then waits for approval in the `pub.dev` environment before publishing.
+Publishing runs in GitHub Actions (`.github/workflows/publish.yml`): pushing a `vX.Y.Z` tag re-runs all checks, verifies the tag matches `pubspec.yaml`, is on `main` and has a CHANGELOG section, then waits for approval in the `pub.dev` environment before publishing. After pub.dev accepts the version, the GitHub Release is created automatically with that CHANGELOG section as its notes.
 
 Show the diff of the release edits and give the user these steps, without running them:
 1. Commit on the release branch with message `version X.Y.Z`.
 2. `git push origin release/vX.Y.Z`, open a pull request into `main`, wait for the `verify` check, then merge it.
 3. Update local `main`: `git switch main` and `git pull origin main`. Confirm `pubspec.yaml` on `main` says `X.Y.Z`.
 4. Tag the merged commit on `main` (not the branch commit; squash and merge commits differ): `git tag vX.Y.Z` then `git push origin vX.Y.Z`.
-5. Approve the "Publish to pub.dev" run in GitHub Actions (Review deployments).
+5. Approve the "Publish to pub.dev" run in GitHub Actions (Review deployments). The GitHub Release appears once publishing succeeds; don't create it by hand.
 
 Run any of these only when the user explicitly says to, one action at a time. Never run `dart pub publish` locally; releases go through the workflow.
