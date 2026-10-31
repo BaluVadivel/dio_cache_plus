@@ -39,6 +39,11 @@ jobs:
             exit 1
           fi
 
+      # Checked before publishing, so a missing section stops the release
+      # instead of failing after the version is live on pub.dev.
+      - name: CHANGELOG must have notes for this version
+        run: bash .github/scripts/release_notes.sh "${GITHUB_REF_NAME#v}" > /dev/null
+
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
@@ -81,3 +86,31 @@ jobs:
       - run: flutter pub get
 
       - run: dart pub publish --force
+
+  github-release:
+    # Only after pub.dev accepted the version.
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # create the GitHub Release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # all tags, to find the previous release
+
+      # Title "X.Y.Z"; body is the CHANGELOG section plus a link to all code
+      # changes since the previous version.
+      - name: Create GitHub Release from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; skipping."
+            exit 0
+          fi
+          bash .github/scripts/release_body.sh "$GITHUB_REF_NAME" > release-notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --title "${GITHUB_REF_NAME#v}" \
+            --notes-file release-notes.md \
+            --verify-tag
