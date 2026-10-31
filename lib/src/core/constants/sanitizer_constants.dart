@@ -21,4 +21,8 @@ class SanitizerConstants {
   static const String saveResponse = "saveResponse";
   static const String overrideConditionalCache = "overrideConditionalCache";
   static const String hiveBoxName = "sanitizer_hive_box";
+
+  /// Set on requests whose key could not be derived from their content
+  /// (e.g. FormData or stream bodies); such requests are never cached or deduplicated.
+  static const String nonCacheableRequestKey = "_dioCachePlusNonCacheable";
 }

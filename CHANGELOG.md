@@ -2,6 +2,21 @@
 
 All notable changes to Dio Cache Plus will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Creating the interceptor more than once no longer throws `Bad state: Future already completed`
+- Requests with `FormData`, stream or other non-JSON bodies no longer hang forever; they are never cached or deduplicated
+- Query parameters that aren't JSON values (e.g. `DateTime`) no longer break cache key generation
+- Failed requests no longer raise an uncaught async error
+- Force refresh (`invalidateCache`) now waits for the old entry to be removed before checking the cache
+- `HiveCacheManager` initialization failures no longer leave later calls waiting forever; the next call retries
+- `removeConditionalCachingData` no longer iterates the box while deleting from it, and a throwing matcher skips that entry instead of aborting
+
+### Added
+- Optional `cacheManager` parameter to supply a custom `SanitizerCacheManager` (now exported)
+- `resetInstance()` (visible for testing) to discard the singleton
+
 ## [2.0.6] - 2025-Dec-16
 
 ### Added

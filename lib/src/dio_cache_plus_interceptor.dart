@@ -30,11 +30,15 @@ class DioCachePlusInterceptor extends Interceptor {
   final Map<String, ConditionalCacheRule> _conditionalCaching = {};
 
   static DioCachePlusInterceptor? _instance;
-  static final Completer<void> _instanceCompleter = Completer();
+  static Completer<void> _instanceCompleter = Completer();
 
   /// Creates a DioCachePlusInterceptor with the specified cache duration.
   ///
   /// Use [conditionalRules] to supply constructor-level caching rules.
+  ///
+  /// Use [cacheManager] to supply a custom storage implementation. Defaults to
+  /// [HiveCacheManager]. Like the other settings, it only applies to the first
+  /// construction, since the interceptor is a singleton.
   ///
   /// Note: keeping signature backward compatible. Pass `conditionalRules` to
   /// define rules permanently when creating interceptor.
@@ -43,11 +47,13 @@ class DioCachePlusInterceptor extends Interceptor {
     required Duration commonCacheDuration,
     required bool Function(Response response) isErrorResponse,
     List<ConditionalCacheRule>? conditionalRules,
+    SanitizerCacheManager? cacheManager,
   }) {
     _instance ??= DioCachePlusInterceptor._(
       cacheAll,
       commonCacheDuration,
       isErrorResponse,
+      cacheManager,
     );
 
     // populate any constructor-provided conditional rules into the internal map
@@ -58,8 +64,17 @@ class DioCachePlusInterceptor extends Interceptor {
       }
     }
 
-    _instanceCompleter.complete();
+    if (!_instanceCompleter.isCompleted) {
+      _instanceCompleter.complete();
+    }
     return _instance!;
+  }
+
+  /// Discards the singleton instance so the next factory call creates a fresh one.
+  @visibleForTesting
+  static void resetInstance() {
+    _instance = null;
+    _instanceCompleter = Completer();
   }
 
   DioCachePlusInterceptor._(
@@ -74,8 +89,14 @@ class DioCachePlusInterceptor extends Interceptor {
   /// Returns cached response if available.
   /// Does NOT trigger network call.
   ///
+  /// [url] must be the full URL, including the Dio `baseUrl`. [method],
+  /// [queryParameters] and [body] must match the original request, or the
+  /// cache key won't match and `null` is returned.
+  ///
   /// [ignoreExpiry] = true → return even expired cache
   /// [ignoreExpiry] = false → respect expiry & auto-remove
+  ///
+  /// Like the other static methods, waits until the interceptor is created.
   static Future<Response?> getCacheData({
     required String url,
     String method = 'GET',
@@ -124,15 +145,18 @@ class DioCachePlusInterceptor extends Interceptor {
     RequestInterceptorHandler handler,
   ) async {
     final key = options.generateRequestKey;
-    _checkForceRefresh(options, key);
+    if (options.extra[SanitizerConstants.invalidateCacheKey] == true) {
+      // Await removal so the cache lookup below can't return the stale entry.
+      await _checkForceRefresh(key);
+    }
     final (isCaching, conditionalKey) = _cachingEnabled(options);
 
     if (isCaching) {
       // Use synchronized access to prevent race conditions
-      final completer = Completer<Response>();
       final isFirstRequest = !_incomingRequests.containsKey(key);
 
       if (!isFirstRequest) {
+        final completer = Completer<Response>();
         _incomingRequests[key]!.add(completer);
         completer.future.then(
           (response) => handler.resolve(response),
@@ -140,7 +164,9 @@ class DioCachePlusInterceptor extends Interceptor {
         );
         return;
       } else {
-        _incomingRequests[key] = [completer];
+        // The first request is answered by its own handler; registering a
+        // completer for it would leave an unhandled error on failure.
+        _incomingRequests[key] = [];
       }
 
       // Check cache validity for first request only
@@ -193,8 +219,11 @@ class DioCachePlusInterceptor extends Interceptor {
       handler.next(response);
       return;
     }
+    final extra = response.requestOptions.extra;
+    // Requests whose body can't be keyed are never stored (see _cachingEnabled).
     final saveResponse =
-        response.requestOptions.extra[SanitizerConstants.saveResponse] == true;
+        extra[SanitizerConstants.saveResponse] == true &&
+        extra[SanitizerConstants.nonCacheableRequestKey] != true;
     // Cache only successful responses (based on isErrorResponse check)
     if (!_isErrorResponse(response) && (isCaching || saveResponse)) {
       try {
@@ -390,6 +419,12 @@ class DioCachePlusInterceptor extends Interceptor {
   }
 
   (bool, String) _cachingEnabled(RequestOptions options) {
+    // Generating the key flags requests whose body can't be keyed.
+    options.generateRequestKey;
+    if (options.extra[SanitizerConstants.nonCacheableRequestKey] == true) {
+      return (false, "");
+    }
+
     final enableCache = options.extra[SanitizerConstants.enableCache];
     final overrideConditional =
         options.extra[SanitizerConstants.overrideConditionalCache] == true;
@@ -462,17 +497,12 @@ class DioCachePlusInterceptor extends Interceptor {
     return DateTime.now().difference(timestamp) > duration;
   }
 
-  /// Checks if a request should invalidate the cache and removes it if needed.
+  /// Removes the cached entry for a force-refresh request.
   ///
-  /// [options] - The request options to check
   /// [key] - The cache key for the request
-  void _checkForceRefresh(RequestOptions options, String key) {
+  Future<void> _checkForceRefresh(String key) async {
     try {
-      final invalidate =
-          options.extra[SanitizerConstants.invalidateCacheKey] == true;
-      if (invalidate) {
-        _cacheManager.remove(key);
-      }
+      await _cacheManager.remove(key);
     } catch (_) {}
   }
 

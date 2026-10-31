@@ -5,6 +5,7 @@
 
 library dio_cache_plus;
 
+export 'src/core/cache_manager/cache_manager.dart';
 export 'src/core/cache_option_extension.dart';
 export 'src/dio_cache_plus_interceptor.dart';
 export 'src/core/models/conditional_cache_rule.dart';

@@ -309,6 +309,8 @@ if (cachedResponse != null) {
 * Uses the **exact same cache key** as interceptor flow
 * Can optionally respect expiry
 
+> **Note:** `url` must be the **full URL**, including your Dio `baseUrl` (e.g. `https://www.example.com/api/profile`, not `/api/profile`). Pass the same `method`, `queryParameters` and `body` as the original request, otherwise the cache key won't match and `null` is returned.
+
 ```dart
 await DioCachePlusInterceptor.getCacheData(
   url: 'https://www.example.com/api/profile',
@@ -444,6 +446,9 @@ The main interceptor class.
 | `commonCacheDuration` | `Duration` | Yes | Default cache duration when no specific duration is provided |
 | `isErrorResponse` | `bool Function(Response)` | Yes | Predicate to determine if a response represents an error (prevents caching of errors) |
 | `conditionalRules` | `List<ConditionalCacheRule>?` | No | List of conditional caching rules applied at interceptor creation |
+| `cacheManager` | `SanitizerCacheManager?` | No | Custom cache storage implementation. Defaults to Hive-based storage |
+
+> The interceptor is a singleton: only the first construction's parameters are used.
 
 **Static Methods:**
 - `addConditionalCaching(String key, ConditionalCacheRule rule)` - Adds a conditional caching rule
@@ -451,6 +456,8 @@ The main interceptor class.
 - `removeConditionalCachingData(RequestMatcher condition)` - Removes cached data matching the condition
 - `clearAll()` - Clears all cached data
 - `getCacheData(...)` - Returns cached response directly without making a network request
+
+> **Note:** Static methods wait until the interceptor has been created, then run. Create the interceptor early (e.g. at app startup); a call made before that simply waits, and only stays pending if the interceptor is never created.
 
 ### CacheOptionsExtension
 

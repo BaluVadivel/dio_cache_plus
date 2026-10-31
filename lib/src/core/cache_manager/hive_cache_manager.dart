@@ -18,20 +18,19 @@ class HiveCacheManager implements SanitizerCacheManager {
   late final Box<HiveCachedResponse> _box;
   late final _RequestKeyGenerator _keyManager;
   bool _isInitialized = false;
-  Completer<void>? _initCompleter;
+  Future<void>? _initFuture;
 
   HiveCacheManager() {
     _keyManager = _RequestKeyGenerator();
   }
 
-  Future<void> _ensureInitialized() async {
-    if (_isInitialized) return;
-    if (_initCompleter != null) {
-      return _initCompleter!.future;
-    }
-    _initCompleter = Completer<void>();
-    await _initHive();
-    _initCompleter!.complete();
+  Future<void> _ensureInitialized() {
+    if (_isInitialized) return Future.value();
+    // Reset on failure so later calls retry instead of waiting forever.
+    return _initFuture ??= _initHive().catchError((Object e, StackTrace st) {
+      _initFuture = null;
+      Error.throwWithStackTrace(e, st);
+    });
   }
 
   Future<void> _initHive() async {
@@ -104,13 +103,20 @@ class HiveCacheManager implements SanitizerCacheManager {
   @override
   Future<void> removeConditional(RequestMatcher condition) async {
     await _ensureInitialized();
-    final selectedKeys = _box.values
-        .where(
-          (a) => condition(
-            RequestDetails(a.method, a.requestUrl, a.queryParameters),
-          ),
-        )
-        .map((e) => e.key);
+    final selectedKeys =
+        _box.values
+            .where((a) {
+              try {
+                return condition(
+                  RequestDetails(a.method, a.requestUrl, a.queryParameters),
+                );
+              } catch (_) {
+                // A throwing matcher skips this entry instead of aborting removal.
+                return false;
+              }
+            })
+            .map((e) => e.key)
+            .toList();
     _keyManager._removeKeys(selectedKeys.toSet());
     for (final key in selectedKeys) {
       await _box.delete(key);

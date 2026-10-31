@@ -1,29 +1,89 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:dio_cache_plus/dio_cache_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// Mock interceptor that simulates network responses
-class MockNetworkInterceptor extends Interceptor {
+// Mock adapter that simulates network responses, so every interceptor
+// (including the cache interceptor) runs exactly as it would in production.
+class MockNetworkAdapter implements HttpClientAdapter {
   final Map<String, dynamic> mockResponses;
   int callCount = 0;
+  int statusCode = 200;
 
-  MockNetworkInterceptor(this.mockResponses);
+  MockNetworkAdapter(this.mockResponses);
 
   @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
     callCount++;
     final responseData = mockResponses[options.path] ?? {'error': 'Not found'};
 
-    final response = Response(
-      requestOptions: options,
-      data: responseData,
-      statusCode: 200,
-      headers: Headers(),
-    );
-
     // Simulate network delay
-    Future.delayed(const Duration(milliseconds: 10), () {
-      handler.resolve(response);
+    await Future.delayed(const Duration(milliseconds: 10));
+    return ResponseBody.fromString(
+      jsonEncode(responseData),
+      statusCode,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+// In-memory storage; Hive needs platform plugins that unit tests don't have.
+class InMemoryCacheManager implements SanitizerCacheManager {
+  final _store = <String, Response>{};
+
+  int get length => _store.length;
+
+  @override
+  Future<void> setData(String key, Response response) async {
+    final duration = response.requestOptions.extra['cache_validity_duration'];
+    _store[key] = Response(
+      requestOptions: response.requestOptions,
+      data: response.data,
+      statusCode: response.statusCode,
+      headers: response.headers,
+      extra: {
+        'cache_timestamp': DateTime.now().toIso8601String(),
+        if (duration is Duration) 'cache_validity_duration': duration,
+      },
+    );
+  }
+
+  @override
+  Future<Response?> getData(String key, RequestOptions options) async {
+    final cached = _store[key];
+    if (cached == null) return null;
+    return Response(
+      requestOptions: options,
+      data: cached.data,
+      statusCode: cached.statusCode,
+      headers: cached.headers,
+      extra: cached.extra,
+    );
+  }
+
+  @override
+  Future<void> clearAll() async => _store.clear();
+
+  @override
+  Future<void> remove(String key) async => _store.remove(key);
+
+  @override
+  Future<void> removeConditional(RequestMatcher condition) async {
+    _store.removeWhere((_, r) {
+      final o = r.requestOptions;
+      return condition(
+        RequestDetails(o.method, o.uri.toString(), o.queryParameters),
+      );
     });
   }
 }
@@ -31,11 +91,13 @@ class MockNetworkInterceptor extends Interceptor {
 void main() {
   late Dio dio;
   late DioCachePlusInterceptor cacheInterceptor;
-  late MockNetworkInterceptor mockInterceptor;
+  late MockNetworkAdapter mockAdapter;
+  late InMemoryCacheManager cacheManager;
 
   setUp(() {
+    DioCachePlusInterceptor.resetInstance();
     dio = Dio();
-    mockInterceptor = MockNetworkInterceptor({
+    mockAdapter = MockNetworkAdapter({
       '/test': {'data': 'test'},
       '/users': {
         'users': ['user1', 'user2'],
@@ -52,19 +114,21 @@ void main() {
       cacheAll: false,
       commonCacheDuration: const Duration(minutes: 5),
       isErrorResponse: (response) => response.statusCode != 200,
+      cacheManager: cacheManager = InMemoryCacheManager(),
     );
 
-    dio.interceptors.addAll([mockInterceptor, cacheInterceptor]);
+    dio.httpClientAdapter = mockAdapter;
+    dio.interceptors.add(cacheInterceptor);
   });
 
-  tearDown(() {
-    DioCachePlusInterceptor.clearAll();
+  tearDown(() async {
+    await DioCachePlusInterceptor.clearAll();
   });
 
   group('Basic Caching', () {
     test('should cache GET request when enabled', () async {
       // Reset call count
-      mockInterceptor.callCount = 0;
+      mockAdapter.callCount = 0;
 
       // Act - First request (should hit network)
       final response1 = await dio.get(
@@ -87,12 +151,12 @@ void main() {
       // Assert
       expect(response1.data, {'data': 'test'});
       expect(response2.data, {'data': 'test'});
-      expect(mockInterceptor.callCount, 1); // Only one network call
+      expect(mockAdapter.callCount, 1); // Only one network call
     });
 
     test('should not cache when enableCache is false', () async {
       // Reset call count
-      mockInterceptor.callCount = 0;
+      mockAdapter.callCount = 0;
 
       // Act
       final response1 = await dio.get(
@@ -108,7 +172,7 @@ void main() {
       // Assert - Both should be network calls
       expect(response1.data, {'data': 'test'});
       expect(response2.data, {'data': 'test'});
-      expect(mockInterceptor.callCount, 2); // Two network calls
+      expect(mockAdapter.callCount, 2); // Two network calls
     });
   });
 
@@ -161,7 +225,7 @@ void main() {
   group('Conditional Caching Rules', () {
     test('should cache based on conditional rule', () async {
       // Reset call count
-      mockInterceptor.callCount = 0;
+      mockAdapter.callCount = 0;
 
       // Add conditional rule
       DioCachePlusInterceptor.addConditionalCaching(
@@ -193,7 +257,7 @@ void main() {
       expect(productResponse2.data, {
         'products': ['product1', 'product2'],
       });
-      expect(mockInterceptor.callCount, 3); // users(1) + products(2)
+      expect(mockAdapter.callCount, 3); // users(1) + products(2)
     });
 
     test('should use dynamic duration in conditional rule', () async {
@@ -211,19 +275,22 @@ void main() {
         ),
       );
 
+      mockAdapter.callCount = 0;
+
       // Act
       await dio.get('/news');
-      await dio.get('/news');
+      await dio.get('/news'); // served from cache, nothing stored
 
       // Assert
-      expect(dynamicCallCount, 2); // Called for each cache storage
+      expect(dynamicCallCount, 1); // Called once, at cache storage time
+      expect(mockAdapter.callCount, 1);
     });
   });
 
   group('Request Deduplication', () {
     test('should deduplicate identical concurrent requests', () async {
       // Reset call count
-      mockInterceptor.callCount = 0;
+      mockAdapter.callCount = 0;
 
       // Act - Fire multiple identical requests simultaneously
       final futures = List.generate(
@@ -245,7 +312,7 @@ void main() {
         expect(response.data, {'data': 'test'});
       }
       expect(
-        mockInterceptor.callCount,
+        mockAdapter.callCount,
         1,
       ); // Only one network call despite 5 requests
     });
@@ -254,7 +321,7 @@ void main() {
   group('Force Refresh', () {
     test('should force refresh when invalidateCache is true', () async {
       // Reset call count
-      mockInterceptor.callCount = 0;
+      mockAdapter.callCount = 0;
 
       // Act - First request (cache)
       final response1 = await dio.get(
@@ -279,7 +346,7 @@ void main() {
       expect(response1.data, {'data': 'test'});
       expect(response2.data, {'data': 'test'});
       expect(
-        mockInterceptor.callCount,
+        mockAdapter.callCount,
         2,
       ); // Two network calls due to force refresh
     });
@@ -306,7 +373,8 @@ void main() {
       // Assert
       expect(capturedDetails, isNotNull);
       expect(capturedDetails!.method, 'GET');
-      expect(capturedDetails!.url, '/test');
+      // url is the full request URL, query string included
+      expect(Uri.parse(capturedDetails!.url).path, '/test');
       expect(capturedDetails!.queryParameters, {'page': '1', 'limit': '10'});
     });
   });
@@ -347,6 +415,129 @@ void main() {
         condition: (request) => request.url.contains('/api'),
       );
       expect(conditionalOnlyRule.duration, isNull);
+    });
+  });
+
+  group('Edge Cases', () {
+    Options cached() => Options().setCachingWithDuration(
+      enableCache: true,
+      duration: const Duration(minutes: 5),
+    );
+
+    test('constructing the interceptor again returns the same instance', () {
+      final second = DioCachePlusInterceptor(
+        cacheAll: true,
+        commonCacheDuration: const Duration(seconds: 1),
+        isErrorResponse: (_) => false,
+      );
+      expect(identical(second, cacheInterceptor), true);
+    });
+
+    test('FormData requests complete and are never cached or merged', () async {
+      mockAdapter.callCount = 0;
+      FormData form() => FormData.fromMap({'file': 'contents'});
+
+      await dio.post('/test', data: form(), options: cached());
+      await dio.post('/test', data: form(), options: cached());
+      await Future.wait([
+        dio.post('/test', data: form(), options: cached()),
+        dio.post('/test', data: form(), options: cached()),
+      ]);
+
+      expect(mockAdapter.callCount, 4);
+    });
+
+    test('non-JSON query values still produce a stable cache key', () async {
+      mockAdapter.callCount = 0;
+      final query = {'since': DateTime.utc(2025, 1, 1)};
+
+      await dio.get('/test', queryParameters: query, options: cached());
+      await dio.get('/test', queryParameters: query, options: cached());
+
+      expect(mockAdapter.callCount, 1);
+    });
+
+    test(
+      'errors reach every deduplicated request and are not cached',
+      () async {
+        mockAdapter.callCount = 0;
+        mockAdapter.statusCode = 500;
+
+        final results = await Future.wait(
+          List.generate(
+            3,
+            (_) => dio
+                .get('/test', options: cached())
+                .then<Object>((r) => r, onError: (Object e) => e),
+          ),
+        );
+        expect(results, everyElement(isA<DioException>()));
+        expect(mockAdapter.callCount, 1);
+
+        mockAdapter.statusCode = 200;
+        final response = await dio.get('/test', options: cached());
+        expect(response.data, {'data': 'test'});
+        expect(mockAdapter.callCount, 2);
+      },
+    );
+
+    test('expired entries are fetched again', () async {
+      mockAdapter.callCount = 0;
+      final shortLived = Options().setCachingWithDuration(
+        enableCache: true,
+        duration: const Duration(milliseconds: 20),
+      );
+
+      await dio.get('/test', options: shortLived);
+      await Future.delayed(const Duration(milliseconds: 40));
+      await dio.get('/test', options: shortLived);
+
+      expect(mockAdapter.callCount, 2);
+    });
+
+    test(
+      'saveResponse stores without caching and getCacheData reads it',
+      () async {
+        mockAdapter.callCount = 0;
+        await dio.get('/news', options: Options().saveResponse());
+        await dio.get('/news', options: Options().saveResponse());
+
+        // Saved responses are not served from cache automatically
+        expect(mockAdapter.callCount, 2);
+        final saved = await DioCachePlusInterceptor.getCacheData(url: '/news');
+        expect(saved?.data, {
+          'news': ['news1', 'news2'],
+        });
+      },
+    );
+
+    test('saveResponse with a FormData body stores nothing', () async {
+      final form = FormData.fromMap({'file': 'contents'});
+      await dio.post('/news', data: form, options: Options().saveResponse());
+
+      final saved = await DioCachePlusInterceptor.getCacheData(
+        url: '/news',
+        method: 'POST',
+        body: form,
+      );
+      expect(saved, isNull);
+      expect(cacheManager.length, 0);
+    });
+
+    test('force refresh replaces the cached entry', () async {
+      mockAdapter.callCount = 0;
+      await dio.get('/test', options: cached());
+      await dio.get(
+        '/test',
+        options: Options().setCachingWithDuration(
+          enableCache: true,
+          duration: const Duration(minutes: 5),
+          invalidateCache: true,
+        ),
+      );
+      await dio.get('/test', options: cached());
+
+      expect(mockAdapter.callCount, 2);
     });
   });
 }
