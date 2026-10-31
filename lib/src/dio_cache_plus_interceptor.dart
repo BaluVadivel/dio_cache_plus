@@ -126,7 +126,7 @@ class DioCachePlusInterceptor extends Interceptor {
         return null;
       }
 
-      return cached;
+      return _instance!._markCacheHit(cached);
     } catch (_) {
       return null;
     }
@@ -150,6 +150,13 @@ class DioCachePlusInterceptor extends Interceptor {
       await _checkForceRefresh(key);
     }
     final (isCaching, conditionalKey) = _cachingEnabled(options);
+    // Why this request may go to the network, reported in Cache-Status.
+    options.extra[SanitizerConstants.cacheStatusFwdKey] =
+        !isCaching
+            ? 'bypass'
+            : options.extra[SanitizerConstants.invalidateCacheKey] == true
+            ? 'request'
+            : 'uri-miss';
 
     if (isCaching) {
       // Use synchronized access to prevent race conditions
@@ -179,14 +186,20 @@ class DioCachePlusInterceptor extends Interceptor {
             !_isCacheExpired(cached, options, conditionalKey)) {
           // Mark this response as served from cache to prevent redundant storage
           options.extra['_servedFromCache'] = true;
+          final hit = _markCacheHit(cached);
 
           // Resolve all waiting completers
           final completers = _incomingRequests.remove(key);
-          completers?.forEach((c) => c.complete(cached));
-          handler.resolve(cached);
+          completers?.forEach((c) => c.complete(hit));
+          handler.resolve(hit);
           _logCache("HIT", "Served From Cache", key);
           return;
         } else {
+          if (cached != null &&
+              options.extra[SanitizerConstants.cacheStatusFwdKey] ==
+                  'uri-miss') {
+            options.extra[SanitizerConstants.cacheStatusFwdKey] = 'stale';
+          }
           await _cacheManager.remove(key);
           _logCache("MISS", "No Cached data available", key);
         }
@@ -224,8 +237,16 @@ class DioCachePlusInterceptor extends Interceptor {
     final saveResponse =
         extra[SanitizerConstants.saveResponse] == true &&
         extra[SanitizerConstants.nonCacheableRequestKey] != true;
+    var stored = false;
+    bool isError;
+    try {
+      isError = _isErrorResponse(response);
+    } catch (_) {
+      // A throwing callback must not hang the request; don't cache.
+      isError = true;
+    }
     // Cache only successful responses (based on isErrorResponse check)
-    if (!_isErrorResponse(response) && (isCaching || saveResponse)) {
+    if (!isError && (isCaching || saveResponse)) {
       try {
         // Ensure a Duration is present in requestOptions.extra for storage.
         _injectComputedDurationIfNeeded(response.requestOptions);
@@ -235,12 +256,16 @@ class DioCachePlusInterceptor extends Interceptor {
                 .cacheValidityDurationKey];
         if (duration is Duration && duration != Duration.zero) {
           await _cacheManager.setData(key, response);
+          stored = true;
           _logCache("SAVE", "Saved to Cache", key);
         } else {
           _logCache("SKIP", "Skipped saving the Cache for now", key);
         }
       } catch (_) {}
     }
+
+    // Marked after storage so the added headers are never persisted.
+    _markNetworkResponse(response, stored: stored);
 
     // Always notify all waiting requests, whether successful or failed
     final completers = _incomingRequests.remove(key);
@@ -251,6 +276,88 @@ class DioCachePlusInterceptor extends Interceptor {
     });
 
     handler.next(response);
+  }
+
+  /// Marks a response served from the cache, per RFC 9111 / RFC 9211:
+  /// `Age` (server age + time in this cache) and `Cache-Status: ...; hit; ttl=N`
+  /// (seconds of freshness left, negative when stale). Returns a new
+  /// [Response], so the stored one is never modified even if a cache manager
+  /// hands out its stored object.
+  Response _markCacheHit(Response cached) {
+    try {
+      final cachedAt = DateTime.tryParse(
+        cached.extra[SanitizerConstants.cacheTimeStampKey] as String? ?? '',
+      );
+      var age =
+          cachedAt == null
+              ? Duration.zero
+              : DateTime.now().difference(cachedAt);
+      // The device clock may have moved backwards since storing.
+      if (age.isNegative) age = Duration.zero;
+      final validity =
+          cached.extra[SanitizerConstants.cacheValidityDurationKey] is Duration
+              ? cached.extra[SanitizerConstants.cacheValidityDurationKey]
+                  as Duration
+              : _cacheDuration;
+      final ttl =
+          ((validity - age).inMicroseconds / Duration.microsecondsPerSecond)
+              .floor();
+
+      final headers = _copyHeaders(cached.headers);
+      headers.set('age', '${_parseAge(headers['age']) + age.inSeconds}');
+      _addCacheStatus(headers, 'hit; ttl=$ttl');
+      return Response(
+        requestOptions: cached.requestOptions,
+        data: cached.data,
+        statusCode: cached.statusCode,
+        statusMessage: cached.statusMessage,
+        isRedirect: cached.isRedirect,
+        redirects: cached.redirects,
+        extra: Map.of(cached.extra),
+        headers: headers,
+      );
+    } catch (_) {
+      return cached;
+    }
+  }
+
+  /// Marks a response that came from the network with
+  /// `Cache-Status: ...; fwd=<reason>[; stored]` (RFC 9211).
+  void _markNetworkResponse(Response response, {required bool stored}) {
+    try {
+      final fwd =
+          response.requestOptions.extra[SanitizerConstants.cacheStatusFwdKey]
+              as String? ??
+          'bypass';
+      final headers = _copyHeaders(response.headers);
+      _addCacheStatus(headers, 'fwd=$fwd${stored ? '; stored' : ''}');
+      response.headers = headers;
+    } catch (_) {}
+  }
+
+  static Headers _copyHeaders(Headers headers) => Headers.fromMap({
+    for (final entry in headers.map.entries)
+      entry.key: List<String>.of(entry.value),
+  });
+
+  /// Appends this cache's member to `Cache-Status`, keeping entries from
+  /// upstream caches (e.g. a CDN) and dropping any earlier entry of ours.
+  static void _addCacheStatus(Headers headers, String params) {
+    const name = SanitizerConstants.cacheStatusName;
+    final values = headers['cache-status'];
+    values?.removeWhere((v) {
+      final member = v.trim();
+      return member == name || member.startsWith('$name;');
+    });
+    if (values != null && values.isEmpty) headers.removeAll('cache-status');
+    headers.add('cache-status', '$name; $params');
+  }
+
+  /// Seconds from an upstream `Age` header; 0 if missing or invalid.
+  static int _parseAge(List<String>? values) {
+    if (values == null || values.isEmpty) return 0;
+    final age = int.tryParse(values.first.trim());
+    return age == null || age < 0 ? 0 : age;
   }
 
   /// Handles request errors by notifying all waiting duplicate requests.

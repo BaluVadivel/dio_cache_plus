@@ -25,4 +25,10 @@ class SanitizerConstants {
   /// Set on requests whose key could not be derived from their content
   /// (e.g. FormData or stream bodies); such requests are never cached or deduplicated.
   static const String nonCacheableRequestKey = "_dioCachePlusNonCacheable";
+
+  /// Name this cache uses in the `Cache-Status` response header (RFC 9211).
+  static const String cacheStatusName = "dio_cache_plus";
+
+  /// Request extra: why the request went to the network (RFC 9211 `fwd` value).
+  static const String cacheStatusFwdKey = "_dioCachePlusFwd";
 }

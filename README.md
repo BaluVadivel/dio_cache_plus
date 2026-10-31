@@ -325,6 +325,32 @@ await DioCachePlusInterceptor.getCacheData(
 );
 ```
 
+### Tell Cached Responses From Live Ones
+
+Every response that passes through the interceptor gets a standard [`Cache-Status`](https://www.rfc-editor.org/rfc/rfc9211) header, and responses served from the cache also get an [`Age`](https://www.rfc-editor.org/rfc/rfc9111#name-age) header:
+
+| Situation | `Cache-Status` |
+|---|---|
+| Served from cache (`ttl` = seconds of freshness left) | `dio_cache_plus; hit; ttl=240` |
+| Served stale via `getCacheData(ignoreExpiry: true)` | `dio_cache_plus; hit; ttl=-120` |
+| Not cached yet, fetched and stored | `dio_cache_plus; fwd=uri-miss; stored` |
+| Cached entry had expired, fetched again | `dio_cache_plus; fwd=stale; stored` |
+| Forced refresh (`invalidateCache: true`) | `dio_cache_plus; fwd=request; stored` |
+| Caching not enabled for the request | `dio_cache_plus; fwd=bypass` |
+| `saveResponse()` | `dio_cache_plus; fwd=bypass; stored` |
+
+```dart
+final response = await dio.get('/profile');
+final cacheStatus = response.headers['cache-status']?.last ?? '';
+final fromCache = cacheStatus.startsWith('dio_cache_plus; hit');
+final secondsInCache = int.tryParse(response.headers.value('age') ?? '');
+```
+
+* `stored` appears only when the response was actually written to the cache.
+* The original `Date` header is never changed. On a cached response, the server's time is `Date + Age`.
+* If a server or CDN already sends `Cache-Status` or `Age`, they're kept: our entry is appended to `Cache-Status`, and our time in cache is added to `Age`.
+* These headers are added when a response is returned and are never stored.
+
 ## 🔧 Runtime Rule Management
 
 Add or remove conditional caching rules dynamically at runtime:

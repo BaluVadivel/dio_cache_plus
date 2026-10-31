@@ -17,6 +17,7 @@ Dio interceptor for response caching, request deduplication and conditional cach
 - **Singleton**: `DioCachePlusInterceptor` is a singleton; only the first construction's parameters apply. Static methods wait for the first construction. `resetInstance()` exists for tests only.
 - **Deduplication**: the first request doesn't register a completer; only duplicates do. Every path (cache hit, response, error, cancel) must drain `_incomingRequests` for its key.
 - **Dio compatibility**: the pubspec allows Dio `>=4.0.0 <6.0.0`; don't use Dio 5-only APIs in `lib/`.
+- **Cache-Status / Age headers** (RFC 9211 / 9111): added to every response after storage, never persisted. Cache hits return a new `Response` with copied headers, so a cache manager that hands out its stored object is never modified (otherwise `Age` double-counts). Never change the `Date` header.
 - **Public API**: everything exported from `lib/dio_cache_plus.dart` is public. Don't remove or rename anything without a major version bump.
 
 ## Known limitations (intentional or deferred)
