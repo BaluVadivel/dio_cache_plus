@@ -7,6 +7,7 @@ All notable changes to Dio Cache Plus will be documented in this file.
 No breaking changes. Existing cached data stays valid after upgrading.
 
 ### Fixed
+- A throwing `isErrorResponse` callback no longer hangs the request; the response is returned and not cached
 - Creating the interceptor more than once no longer throws `Bad state: Future already completed`
 - Requests with `FormData`, stream or other non-JSON bodies no longer hang forever (even with caching disabled); they are never cached, saved or deduplicated
 - Query parameters that aren't JSON values (e.g. `DateTime`) no longer break cache key generation
@@ -16,6 +17,7 @@ No breaking changes. Existing cached data stays valid after upgrading.
 - `removeConditionalCachingData` no longer iterates the box while deleting from it, and a throwing matcher skips that entry instead of aborting
 
 ### Added
+- Every response passing through the interceptor now has a standard `Cache-Status` header (RFC 9211), e.g. `dio_cache_plus; hit; ttl=240` or `dio_cache_plus; fwd=uri-miss; stored`, and cached responses get an `Age` header (RFC 9111). Upstream `Cache-Status`/`Age` values are preserved; the original `Date` header is never changed
 - Optional `cacheManager` parameter to supply a custom `SanitizerCacheManager` (now exported)
 - `resetInstance()` (visible for testing) to discard the singleton
 

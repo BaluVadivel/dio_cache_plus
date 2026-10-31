@@ -11,6 +11,9 @@ class MockNetworkAdapter implements HttpClientAdapter {
   int callCount = 0;
   int statusCode = 200;
 
+  /// Extra headers the "server" sends, e.g. from a CDN.
+  Map<String, List<String>> upstreamHeaders = {};
+
   MockNetworkAdapter(this.mockResponses);
 
   @override
@@ -29,6 +32,7 @@ class MockNetworkAdapter implements HttpClientAdapter {
       statusCode,
       headers: {
         Headers.contentTypeHeader: [Headers.jsonContentType],
+        ...upstreamHeaders,
       },
     );
   }
@@ -42,9 +46,24 @@ class InMemoryCacheManager implements SanitizerCacheManager {
   final _store = <String, Response>{};
 
   int get length => _store.length;
+  bool failWrites = false;
+
+  /// Hand out the stored object itself instead of a copy.
+  bool returnStoredObject = false;
+
+  /// The single stored entry (as stored, not a copy).
+  Response get onlyEntry => _store.values.single;
+
+  /// Rewrites every entry's stored time.
+  void setStoredAt(DateTime time) {
+    for (final r in _store.values) {
+      r.extra['cache_timestamp'] = time.toIso8601String();
+    }
+  }
 
   @override
   Future<void> setData(String key, Response response) async {
+    if (failWrites) throw StateError('disk full');
     final duration = response.requestOptions.extra['cache_validity_duration'];
     _store[key] = Response(
       requestOptions: response.requestOptions,
@@ -62,6 +81,7 @@ class InMemoryCacheManager implements SanitizerCacheManager {
   Future<Response?> getData(String key, RequestOptions options) async {
     final cached = _store[key];
     if (cached == null) return null;
+    if (returnStoredObject) return cached;
     return Response(
       requestOptions: options,
       data: cached.data,
@@ -540,4 +560,232 @@ void main() {
       expect(mockAdapter.callCount, 2);
     });
   });
+
+  group('Cache-Status and Age headers', () {
+    const name = 'dio_cache_plus';
+    Options cached([Duration d = const Duration(minutes: 5)]) =>
+        Options().setCachingWithDuration(enableCache: true, duration: d);
+    List<String>? status(Response r) => r.headers['cache-status'];
+    String? age(Response r) => r.headers.value('age');
+
+    test('caching disabled: fwd=bypass, not from cache, no Age', () async {
+      final r = await dio.get('/test');
+      expect(status(r), ['$name; fwd=bypass']);
+      expect(age(r), isNull);
+    });
+
+    test('miss is stored, then served as hit with ttl and Age', () async {
+      final live = await dio.get('/test', options: cached());
+      expect(status(live), ['$name; fwd=uri-miss; stored']);
+
+      final hit = await dio.get('/test', options: cached());
+      expect(age(hit), '0');
+      final ttl = int.parse(
+        RegExp(r'ttl=(-?\d+)').firstMatch(status(hit)!.single)!.group(1)!,
+      );
+      expect(ttl, inInclusiveRange(298, 300));
+      expect(status(hit)!.single, startsWith('$name; hit; ttl='));
+    });
+
+    test('Age and ttl reflect time spent in cache', () async {
+      await dio.get('/test', options: cached());
+      cacheManager.setStoredAt(
+        DateTime.now().subtract(const Duration(seconds: 100)),
+      );
+      final hit = await dio.get('/test', options: cached());
+      expect(int.parse(age(hit)!), inInclusiveRange(100, 101));
+      final ttl = int.parse(
+        RegExp(r'ttl=(-?\d+)').firstMatch(status(hit)!.single)!.group(1)!,
+      );
+      expect(ttl, inInclusiveRange(198, 200));
+    });
+
+    test('expired entry is fetched again: fwd=stale; stored', () async {
+      await dio.get('/test', options: cached(const Duration(milliseconds: 10)));
+      await Future.delayed(const Duration(milliseconds: 30));
+      final r = await dio.get(
+        '/test',
+        options: cached(const Duration(milliseconds: 10)),
+      );
+      expect(status(r), ['$name; fwd=stale; stored']);
+    });
+
+    test('forced refresh: fwd=request; stored', () async {
+      await dio.get('/test', options: cached());
+      final r = await dio.get(
+        '/test',
+        options: Options().setCachingWithDuration(
+          enableCache: true,
+          duration: const Duration(minutes: 5),
+          invalidateCache: true,
+        ),
+      );
+      expect(status(r), ['$name; fwd=request; stored']);
+    });
+
+    test('getCacheData marks hits, with negative ttl when stale', () async {
+      await dio.get('/test', options: cached(const Duration(seconds: 10)));
+      cacheManager.setStoredAt(
+        DateTime.now().subtract(const Duration(seconds: 70)),
+      );
+      final stale = await DioCachePlusInterceptor.getCacheData(url: '/test');
+      expect(status(stale!)!.single, startsWith('$name; hit; ttl=-'));
+      final ttl = int.parse(
+        RegExp(r'ttl=(-?\d+)').firstMatch(status(stale)!.single)!.group(1)!,
+      );
+      expect(ttl, inInclusiveRange(-61, -60));
+      expect(int.parse(age(stale)!), inInclusiveRange(70, 71));
+    });
+
+    test('saveResponse: fwd=bypass; stored', () async {
+      final r = await dio.get('/test', options: Options().saveResponse());
+      expect(status(r), ['$name; fwd=bypass; stored']);
+    });
+
+    test('FormData upload: fwd=bypass, never stored', () async {
+      final r = await dio.post(
+        '/test',
+        data: FormData.fromMap({'f': 'x'}),
+        options: cached(),
+      );
+      expect(status(r), ['$name; fwd=bypass']);
+    });
+
+    test('"stored" only when the write really happened', () async {
+      // isErrorResponse rejects 201 in this setup
+      mockAdapter.statusCode = 201;
+      final rejected = await dio.get('/test', options: cached());
+      expect(status(rejected), ['$name; fwd=uri-miss']);
+
+      mockAdapter.statusCode = 200;
+      final zero = await dio.get('/users', options: cached(Duration.zero));
+      expect(status(zero), ['$name; fwd=uri-miss']);
+
+      cacheManager.failWrites = true;
+      final failed = await dio.get('/news', options: cached());
+      expect(status(failed), ['$name; fwd=uri-miss']);
+      expect(cacheManager.length, 0);
+    });
+
+    test('upstream Age and Cache-Status are kept and combined', () async {
+      mockAdapter.upstreamHeaders = {
+        'age': ['100'],
+        'cache-status': ['cloudflare; hit'],
+      };
+      final live = await dio.get('/test', options: cached());
+      expect(status(live), ['cloudflare; hit', '$name; fwd=uri-miss; stored']);
+      expect(age(live), '100');
+
+      final hit = await dio.get('/test', options: cached());
+      expect(status(hit)!.length, 2);
+      expect(status(hit)!.first, 'cloudflare; hit');
+      expect(status(hit)!.last, startsWith('$name; hit; ttl='));
+      expect(int.parse(age(hit)!), inInclusiveRange(100, 101));
+    });
+
+    test('invalid upstream Age is ignored', () async {
+      mockAdapter.upstreamHeaders = {
+        'age': ['soon'],
+      };
+      await dio.get('/test', options: cached());
+      final hit = await dio.get('/test', options: cached());
+      expect(age(hit), '0');
+    });
+
+    test('stored entry is never modified by the added headers', () async {
+      await dio.get('/test', options: cached());
+      await dio.get('/test', options: cached());
+      await dio.get('/test', options: cached());
+
+      final stored = cacheManager.onlyEntry;
+      expect(stored.headers['cache-status'], isNull);
+      expect(stored.headers['age'], isNull);
+
+      // repeated hits never stack entries
+      final hit = await dio.get('/test', options: cached());
+      expect(status(hit)!.length, 1);
+    });
+
+    test(
+      'manager returning its stored object: Age never double-counts',
+      () async {
+        cacheManager.returnStoredObject = true;
+        mockAdapter.upstreamHeaders = {
+          'age': ['100'],
+        };
+        await dio.get('/test', options: cached());
+        cacheManager.setStoredAt(
+          DateTime.now().subtract(const Duration(seconds: 50)),
+        );
+        for (var i = 0; i < 3; i++) {
+          final hit = await dio.get('/test', options: cached());
+          // 100 from upstream + 50 in this cache, on every hit
+          expect(int.parse(age(hit)!), inInclusiveRange(150, 151));
+          expect(status(hit)!.single, startsWith('$name; hit; ttl='));
+        }
+        expect(cacheManager.onlyEntry.headers.value('age'), '100');
+      },
+    );
+
+    test('empty upstream Age list is ignored', () async {
+      mockAdapter.upstreamHeaders = {'age': []};
+      await dio.get('/test', options: cached());
+      final hit = await dio.get('/test', options: cached());
+      expect(age(hit), '0');
+      expect(status(hit)!.single, startsWith('$name; hit; ttl='));
+    });
+
+    test('device clock moved backwards: Age clamps to 0', () async {
+      await dio.get('/test', options: cached());
+      cacheManager.setStoredAt(DateTime.now().add(const Duration(hours: 1)));
+      final hit = await dio.get('/test', options: cached());
+      expect(age(hit), '0');
+    });
+
+    test('deduplicated requests share the same status', () async {
+      final responses = await Future.wait(
+        List.generate(3, (_) => dio.get('/test', options: cached())),
+      );
+      for (final r in responses) {
+        expect(status(r), ['$name; fwd=uri-miss; stored']);
+      }
+    });
+
+    test('error responses are not marked', () async {
+      mockAdapter.statusCode = 500;
+      try {
+        await dio.get('/test', options: cached());
+        fail('expected DioException');
+      } on DioException catch (e) {
+        expect(e.response?.headers['cache-status'], isNull);
+      }
+    });
+  });
+
+  test(
+    'a throwing isErrorResponse callback does not hang the request',
+    () async {
+      DioCachePlusInterceptor.resetInstance();
+      final adapter = MockNetworkAdapter({
+        '/test': {'data': 'test'},
+      });
+      final store = InMemoryCacheManager();
+      final throwingDio = Dio()..httpClientAdapter = adapter;
+      throwingDio.interceptors.add(
+        DioCachePlusInterceptor(
+          cacheAll: true,
+          commonCacheDuration: const Duration(minutes: 5),
+          isErrorResponse: (r) => throw StateError('bad callback'),
+          cacheManager: store,
+        ),
+      );
+
+      final r = await throwingDio
+          .get('/test')
+          .timeout(const Duration(seconds: 2));
+      expect(r.data, {'data': 'test'});
+      expect(r.headers['cache-status'], ['dio_cache_plus; fwd=uri-miss']);
+      expect(store.length, 0);
+    },
+  );
 }
