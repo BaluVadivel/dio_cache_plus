@@ -308,6 +308,48 @@ class _CacheExamplePageState extends State<CacheExamplePage> {
     }
   }
 
+  Future<void> _saveResponse() async {
+    setState(() => _isLoading = true);
+    _addLog('💾 Fetching photo and saving response (caching not enabled)...');
+
+    try {
+      final stopwatch = Stopwatch()..start();
+      // Always hits the network, but stores the response for later reads
+      final response = await widget.dio.get(
+        '/photos/1',
+        options: Options().saveResponse(duration: const Duration(hours: 1)),
+      );
+      stopwatch.stop();
+
+      _addLog('✅ Photo fetched in ${stopwatch.elapsedMilliseconds}ms');
+      _addLog('   Saved for 1 hour: "${response.data['title']}"');
+    } catch (e) {
+      _addLog('❌ Error saving photo: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _readSavedResponse() async {
+    _addLog('📖 Reading saved photo without a network call...');
+
+    // getCacheData needs the FULL URL, including the Dio baseUrl
+    final fullUrl = '${widget.dio.options.baseUrl}/photos/1';
+    final cached = await DioCachePlusInterceptor.getCacheData(url: fullUrl);
+
+    if (cached != null) {
+      _addLog('✅ Found in cache: "${cached.data['title']}"');
+    } else {
+      _addLog('⚪ Nothing saved yet - tap "Save Response" first');
+    }
+
+    // A path alone doesn't match the cache key
+    final pathOnly = await DioCachePlusInterceptor.getCacheData(
+      url: '/photos/1',
+    );
+    _addLog('   Path only (/photos/1): ${pathOnly == null ? 'null' : 'found'}');
+  }
+
   Future<void> _clearAllCache() async {
     _addLog('🧹 Clearing all cache...');
     await DioCachePlusInterceptor.clearAll();
@@ -388,6 +430,18 @@ class _CacheExamplePageState extends State<CacheExamplePage> {
                     Colors.indigo,
                     _fetchWithRuntimeRule,
                     Icons.rule,
+                  ),
+                  _buildActionButton(
+                    'Save Response',
+                    Colors.brown,
+                    _saveResponse,
+                    Icons.save,
+                  ),
+                  _buildActionButton(
+                    'Read Saved',
+                    Colors.blueGrey,
+                    _readSavedResponse,
+                    Icons.inventory,
                   ),
                 ],
               ),
